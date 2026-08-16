@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, FileText, Database, Layers, Search, ChevronRight, ShieldCheck, AlertCircle } from 'lucide-react'
+import { Upload, FileText, Database, Layers, Search, ChevronRight, ShieldCheck, AlertCircle, Trash2 } from 'lucide-react'
 export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
   const navigate = useNavigate()
   const [docs, setDocs] = useState<any[]>([])
@@ -8,6 +8,8 @@ export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
   const [dragOver, setDrag] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string|null>(null)
+  const [deletingId, setDeletingId] = useState<number|null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<number|null>(null)
   const ref = useRef<HTMLInputElement>(null)
   const fetchDocs = ()=> fetch('/api/documents').then(r=>r.json()).then(d=>{ if(Array.isArray(d)){ setDocs(d); if(!selected && d[0]) setSelected(d[0].id)}})
   useEffect(()=>{ fetchDocs() },[])
@@ -23,8 +25,8 @@ export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
       if(res.ok && data?.id){ 
         onToast('Document indexed'); 
         fetchDocs()
-        // Redirect to analyze page with the new document
-        navigate(`/teacher/analyze?doc_ids=${data.id}`)
+        // Redirect to base teacher page
+        navigate('/teacher')
       } else {
         setError(data?.error || 'Upload failed')
         onToast(data?.error || 'Upload failed')
@@ -33,6 +35,22 @@ export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
       setError(e instanceof Error ? e.message : 'Upload failed')
       onToast('Upload failed')
     } finally{ setBusy(false)}
+  }
+  const deleteDoc = async (id: number)=>{
+    setDeletingId(id)
+    try{
+      const res = await fetch(`/api/documents?id=${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if(res.ok && data?.ok){
+        onToast('Document deleted')
+        if(selected === id) setSelected(null)
+        fetchDocs()
+      } else {
+        onToast(data?.error || 'Delete failed')
+      }
+    } catch(e){
+      onToast('Delete failed')
+    } finally{ setDeletingId(null); setConfirmDelete(null) }
   }
   return (
     <div className="grid grid-cols-12 gap-6">
@@ -69,8 +87,21 @@ export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
             {docs.map(d=>(
               <div key={d.id} onClick={()=>setSelected(d.id)} className={`p-4 flex gap-3 cursor-pointer hover:bg-zinc-50 ${selected===d.id?'bg-violet-50':''}`}>
                 <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${selected===d.id?'bg-violet-600 text-white':'bg-zinc-100'}`}><FileText size={16}/></div>
-                <div className="min-w-0 flex-1"><div className="text-xs font-black truncate">{d.title}</div><div className="text-[11px] text-zinc-500 truncate">{d.original_name} • {new Date(d.uploaded_at).toLocaleDateString()}</div><div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border">{d.chunks?.length||0} chunks</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-zinc-900 text-white">{d.status}</span></div></div>
-                <ChevronRight size={14} className="self-center text-zinc-300"/>
+                <div className="min-w-0 flex-1"><div className="text-xs font-black truncate">{d.title}</div><div className="text-[11px] text-zinc-500 truncate">{d.original_name} • {new Date(d.uploaded_at).toLocaleDateString()}</div><div className="flex gap-1.5 mt-1.5"><span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border">{d.chunks?.length||0} chunks</span><span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-zinc-900 text-white">{d.status}</span></div>
+                  {confirmDelete === d.id && (
+                    <div className="mt-2 flex items-center gap-2" onClick={e=>e.stopPropagation()}>
+                      <span className="text-[11px] font-semibold text-red-600">Delete this document and all its question sets?</span>
+                      <button onClick={()=>deleteDoc(d.id)} disabled={deletingId===d.id} className="text-[10px] font-bold px-2 py-1 rounded-full bg-red-600 text-white disabled:opacity-50">{deletingId===d.id?'Deleting…':'Yes, delete'}</button>
+                      <button onClick={()=>setConfirmDelete(null)} className="text-[10px] font-bold px-2 py-1 rounded-full bg-zinc-200 text-zinc-700">Cancel</button>
+                    </div>
+                  )}
+                </div>
+                {confirmDelete !== d.id && (
+                  <button onClick={e=>{e.stopPropagation(); setConfirmDelete(d.id)}} disabled={deletingId===d.id} className="self-center text-zinc-300 hover:text-red-500 transition-colors disabled:opacity-50" title="Delete document">
+                    <Trash2 size={14}/>
+                  </button>
+                )}
+                {confirmDelete !== d.id && <ChevronRight size={14} className="self-center text-zinc-300"/>}
               </div>
             ))}
           </div>

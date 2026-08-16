@@ -603,10 +603,19 @@ Return ONLY JSON array:
       return res.status(400).json({error:'Invalid request'});
     }
     if(req.method==='DELETE'){
-      const { id } = req.body;
-      const { error } = await supabase.from('questions').delete().eq('id', id);
-      if(error) throw error;
-      return res.status(200).json({ok:true});
+      const id = req.query.id || req.body?.id;
+      const setId = req.query.set_id || req.body?.set_id;
+      if(id){
+        const { error } = await supabase.from('questions').delete().eq('id', id);
+        if(error) throw error;
+        return res.status(200).json({ok:true});
+      }
+      if(setId){
+        const { error } = await supabase.from('questions').delete().eq('set_id', setId);
+        if(error) throw error;
+        return res.status(200).json({ok:true});
+      }
+      return res.status(400).json({error:'id or set_id required'});
     }
     res.status(405).json({error:'Method not allowed'});
   }catch(err){

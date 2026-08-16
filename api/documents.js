@@ -17,7 +17,9 @@ export default async function handler(req,res){
       return res.status(201).json(data);
     }
     if(req.method==='DELETE'){
-      const { id } = req.body;
+      const id = req.query.id || req.body?.id;
+      if(!id) return res.status(400).json({error:'id required'});
+      // Cascade: deleting document cascades to question_sets → questions → submissions/answers (FK ON DELETE CASCADE)
       const { error } = await supabase.from('documents').delete().eq('id', id);
       if(error) throw error;
       return res.status(200).json({ok:true});

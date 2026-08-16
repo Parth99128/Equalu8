@@ -14,7 +14,8 @@ import {
   Loader2,
   ArrowRight,
   FileText,
-  CheckCircle
+  CheckCircle,
+  Trash2
 } from 'lucide-react'
 
 interface Module {
@@ -53,6 +54,8 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [docModules, setDocModules] = useState<Record<number, Module[]>>({})
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set())
+  const [deletingSet, setDeletingSet] = useState<number|null>(null)
+  const [confirmDeleteSet, setConfirmDeleteSet] = useState<number|null>(null)
 
   const parseOptions = (s:string|null)=>{ try{ const j=JSON.parse(s||''); return Array.isArray(j)?j:[] }catch{ return [] }}
 
@@ -180,6 +183,23 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
     } finally{ setBusy(false)}
   }
 
+  const deleteSet = async (setId: number)=>{
+    setDeletingSet(setId)
+    try{
+      const res = await fetch(`/api/question-sets?id=${setId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if(res.ok && data?.ok){
+        onToast('Question set deleted')
+        if(selectedSet === setId) setSelectedSet(null)
+        fetchAll()
+      } else {
+        onToast(data?.error || 'Delete failed')
+      }
+    } catch(e){
+      onToast('Delete failed')
+    } finally{ setDeletingSet(null); setConfirmDeleteSet(null) }
+  }
+
   const getConceptColor = (coverage: number) => {
     if (coverage >= 80) return 'bg-emerald-500'
     if (coverage >= 60) return 'bg-amber-500'
@@ -232,11 +252,24 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
               <option value="">View existing set</option>
               {qsets.map(s=>{ const dd=docs.find(x=>x.id===s.document_id); return <option key={s.id} value={s.id}>Set #{s.id} • {dd?.title.slice(0,22)} • {s.total_questions}Q</option>})}
             </select>
+            {selectedSet && confirmDeleteSet !== selectedSet && (
+              <button onClick={()=>setConfirmDeleteSet(selectedSet)} disabled={deletingSet===selectedSet} className="px-3 py-2.5 rounded-xl border bg-white text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50" title="Delete this question set">
+                <Trash2 size={16}/>
+              </button>
+            )}
           </div>
           <button onClick={generate} disabled={busy||selectedDocIds.length===0||totalQuestions===0} className={`px-6 py-2.5 rounded-full font-black text-sm flex items-center gap-2 justify-center ${busy||selectedDocIds.length===0||totalQuestions===0?'bg-zinc-200 text-zinc-500':'bg-zinc-900 text-white'}`}>
             {busy? <><Loader2 className="w-3 h-3 animate-spin"/> Generating…</> : <>Generate {totalQuestions} questions</>}
           </button>
         </div>
+
+        {selectedSet && confirmDeleteSet === selectedSet && (
+          <div className="mt-3 flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+            <span className="text-sm font-semibold text-red-700">Delete this question set and all its questions?</span>
+            <button onClick={()=>deleteSet(selectedSet)} disabled={deletingSet===selectedSet} className="text-xs font-bold px-3 py-1.5 rounded-full bg-red-600 text-white disabled:opacity-50">{deletingSet===selectedSet?'Deleting…':'Yes, delete'}</button>
+            <button onClick={()=>setConfirmDeleteSet(null)} className="text-xs font-bold px-3 py-1.5 rounded-full bg-zinc-200 text-zinc-700">Cancel</button>
+          </div>
+        )}
 
         {/* Question Type Builder */}
         <div className="mt-4 p-4 rounded-xl bg-zinc-50 border">

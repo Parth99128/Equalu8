@@ -1,0 +1,17 @@
+﻿{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "framework": "vite",
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "your-supabase-url.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "your-supabase-anon-key",
+    "SUPABASE_URL": "your-supabase-url.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "your-supabase-service-role-key",
+    "VITE_SUPABASE_URL": "your-supabase-url.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "your-supabase-anon-key",
+    "VITE_GOOGLE_CLIENT_ID": "your-google-client-id",
+    "VITE_GOOGLE_AUTH_PROXY": "http://localhost:3004/auth/callback",
+    "GEMINI_API_KEY": "your-gemini-api-key",
+    "GEMINI_MODEL": "gemini-1.5-flash"
+  }
+}

@@ -22,12 +22,12 @@ An AI-powered Learning Management System with a Python RAG engine for grounded q
 ┌─────────────────────────────────────────────────────┐
 │  Frontend (React + TypeScript + Vite + Tailwind)    │
 │  ├── Teacher: Ingest → Analyze → Sets → Grade       │
-│  └── Student: Assignments → Attempt → Feedback     │
+│  └── Student: Assignments → Attempt → Feedback      │
 ├─────────────────────────────────────────────────────┤
 │  API Layer (Vercel Serverless Functions)            │
 │  ├── ingest.js    — multipart upload → Python CLI   │
-│  ├── syllabus-analysis.js — AI syllabus breakdown    │
-│  ├── question-sets.js — question set CRUD            │
+│  ├── syllabus-analysis.js — AI syllabus breakdown   │
+│  ├── question-sets.js — question set CRUD           │
 │  ├── questions.js   — question CRUD                 │
 │  ├── answers.js     — answer storage                │
 │  ├── submissions.js — submission management         │
@@ -38,28 +38,28 @@ An AI-powered Learning Management System with a Python RAG engine for grounded q
 ├─────────────────────────────────────────────────────┤
 │  Python RAG Engine (rag_engine/)                    │
 │  ├── ingest_cli.py — text/table/vision extraction   │
-│  ├── chunking.py   — semantic splitter w/ metadata │
-│  ├── retrieval.py  — lexical + grounding ranking   │
+│  ├── chunking.py   — semantic splitter w/ metadata  │
+│  ├── retrieval.py  — lexical + grounding ranking    │
 │  ├── generator.py  — Gemini-grounded question gen   │
 │  ├── evaluator.py  — per-answer WHY diagnosis       │
 │  ├── analyzer.py   — syllabus structure analysis    │
-│  ├── ai_client.py  — Gemini API client             │
+│  ├── ai_client.py  — Gemini API client              │
 │  └── pipeline.py   — end-to-end orchestration       │
 ├─────────────────────────────────────────────────────┤
 │  Supabase (PostgreSQL + Auth)                       │
 │  └── documents, question_sets, questions, answers,  │
-│      submissions, profiles                           │
+│      submissions, profiles                          │
 └─────────────────────────────────────────────────────┘
 ```
 
 ### RAG Pipeline Flow
 
 ```
-Upload → Extract Text/Tables/Visuals → Semantic Chunking → Index in Supabase
+                              Upload → Extract Text/Tables/Visuals → Semantic Chunking → Index in Supabase
                                                                     ↓
-                                    Retrieve Relevant Chunks ← Generate Questions
+                                          Retrieve Relevant Chunks ← Generate Questions
                                                                     ↓
-                                            Evaluate Answers → Feedback w/ Citations
+                                               Evaluate Answers → Feedback w/ Citations
 ```
 
 - **Chunking** — Sentence-aware splitter (1100 chars, 140 overlap) with grounding scores and page metadata.
@@ -67,15 +67,29 @@ Upload → Extract Text/Tables/Visuals → Semantic Chunking → Index in Supaba
 - **Generation** — Calls Gemini 1.5 Flash via Google Generative Language API. Enforces verbatim grounding chunk citations — no question without a source.
 - **Evaluation** — Per-answer diagnosis: feedback + conceptual gap analysis, chunk-cited, constructive.
 
+## Models flow
+
+""if one model i.e primary or else fails then the architecture follows the following flow:""
+                                          |
+                            1. gemma-4-26b-a4b-it ← primary (Gemma 4) 
+                            2. gemma-4-31b-it ← Gemma 4
+                            3. gemini-2.5-flash ← Gemini Flash
+                            4. gemini-2.5-pro
+                            5. gemini-2.0-flash
+                            6. gemini-2.0-flash-lite
+                            7. gemini-1.5-flash
+                            8. gemini-1.5-pro
+                            9. gemini-1.0-pro
+
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
+| Layer    | Technology |
+|----------|------------|
 | Frontend | React 19, TypeScript, Vite 7, Tailwind CSS 4, Framer Motion |
-| Backend | Vercel Serverless Functions (Node.js) |
-| AI/RAG | Python 3, Gemini 1.5 Flash, pdfplumber, PyMuPDF, Tesseract OCR |
+| Backend  | Vercel Serverless Functions (Node.js) |
+| AI/RAG   | Python 3, gemma-4-26b-a4b-it, pdfplumber, PyMuPDF, Tesseract OCR |
 | Database | Supabase (PostgreSQL + Auth) |
-| Auth | Supabase Auth + Google OAuth |
+| Auth     | Supabase Auth + Google OAuth |
 
 ## Getting Started
 

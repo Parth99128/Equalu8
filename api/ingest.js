@@ -274,11 +274,31 @@ function runPythonScript(scriptPath, args) {
         }
         resolve({ error: errorMsg });
       } else {
-        try {
-          const result = JSON.parse(stdout.trim());
-          resolve(result);
-        } catch (e) {
-          resolve({ error: 'Invalid JSON from Python script: ' + stdout });
+        // The Python script may print warnings (e.g. fitz deprecation) to stdout
+        // before the JSON output. Find the first '{' and parse from there.
+        const trimmed = stdout.trim();
+        const jsonStart = trimmed.indexOf('{');
+        if (jsonStart === -1) {
+          resolve({ error: 'No JSON output from Python script. stdout: ' + trimmed.slice(0, 500) });
+        } else {
+          const jsonStr = trimmed.slice(jsonStart);
+          try {
+            const result = JSON.parse(jsonStr);
+            resolve(result);
+          } catch (e) {
+            // Try to find the last valid JSON object (in case there's trailing text too)
+            const jsonEnd = jsonStr.lastIndexOf('}');
+            if (jsonEnd > 0) {
+              try {
+                const result = JSON.parse(jsonStr.slice(0, jsonEnd + 1));
+                resolve(result);
+              } catch (e2) {
+                resolve({ error: 'Invalid JSON from Python script: ' + jsonStr.slice(0, 500) });
+              }
+            } else {
+              resolve({ error: 'Invalid JSON from Python script: ' + jsonStr.slice(0, 500) });
+            }
+          }
         }
       }
     });

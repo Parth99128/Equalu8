@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { Library, PencilRuler, MessageSquareQuote, LogOut } from 'lucide-react'
+import { Library, PencilRuler, MessageSquareQuote, LogOut, BookOpen } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 export default function StudentLayout(){
   const { profile, logout } = useAuth()
@@ -19,6 +19,7 @@ export default function StudentLayout(){
           </div>
           <nav className="hidden md:flex items-center gap-1 p-1 bg-zinc-900 rounded-full">
             <NavLink to="/student/assignments" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><Library size={14}/> Assignments</NavLink>
+            <NavLink to="/student/materials" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><BookOpen size={14}/> Materials</NavLink>
             <NavLink to="/student/feedback" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><MessageSquareQuote size={14}/> My Feedback</NavLink>
           </nav>
           <div className="flex items-center gap-2">
@@ -28,8 +29,9 @@ export default function StudentLayout(){
           </div>
         </div>
         <div className="md:hidden max-w-[1360px] mx-auto px-4 pb-3">
-          <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-900 rounded-2xl">
+          <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-900 rounded-2xl">
             <NavLink to="/student/assignments" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><Library size={14}/>Assignments</NavLink>
+            <NavLink to="/student/materials" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><BookOpen size={14}/>Materials</NavLink>
             <NavLink to="/student/feedback" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><MessageSquareQuote size={14}/>Feedback</NavLink>
           </div>
         </div>

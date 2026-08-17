@@ -63,18 +63,26 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
   const [scheduleSet, setScheduleSet] = useState<number|null>(null)
   const [dueDate, setDueDate] = useState('')
   const [timeLimit, setTimeLimit] = useState('')
+  const [sharedMaterialNames, setSharedMaterialNames] = useState<Set<string>>(new Set())
 
   const parseOptions = (s:string|null)=>{ try{ const j=JSON.parse(s||''); return Array.isArray(j)?j:[] }catch{ return [] }}
 
   const fetchAll = async()=>{
-    const [d,s,q] = await Promise.all([
+    const [d,s,q,sm] = await Promise.all([
       fetch('/api/documents').then(r=>r.json()),
       fetch('/api/question-sets').then(r=>r.json()),
       fetch('/api/questions').then(r=>r.json()),
+      fetch('/api/study-materials').then(r=>r.json()),
     ])
     if(Array.isArray(d)) setDocs(d)
     if(Array.isArray(s)) { setQsets(s); if(s[0]&&!selectedSet) setSelectedSet(s[0].id) }
     if(Array.isArray(q)) setQuestions(q)
+    if(Array.isArray(sm)) {
+      // Track which original_name values are shared as study materials
+      const shared = new Set<string>()
+      sm.forEach((m: any) => { if(m.file_name) shared.add(m.file_name) })
+      setSharedMaterialNames(shared)
+    }
     if(d.length > 0 && selectedDocIds.length === 0) setSelectedDocIds([d[0].id])
     
     // Initialize document weights equally
@@ -279,6 +287,7 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
           <div className="flex flex-wrap gap-2">
             {docs.map(d => {
               const isSelected = selectedDocIds.includes(d.id)
+              const isShared = sharedMaterialNames.has(d.original_name)
               return (
                 <button
                   key={d.id}
@@ -292,6 +301,7 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
                   }`}
                 >
                   {d.title.slice(0, 30)}
+                  {isShared && <span className="ml-1 text-[9px] font-bold px-1 py-0.5 rounded-full bg-emerald-500 text-white" title="Shared as study material">📖</span>}
                   {isSelected && <CheckCircle className="ml-1 w-4 h-4" />}
                 </button>
               )

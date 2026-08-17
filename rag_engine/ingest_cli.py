@@ -9,6 +9,12 @@ import os
 import json
 import io
 import base64
+import warnings
+
+# Suppress deprecation warnings BEFORE any library imports so they
+# don't contaminate stdout (which must be pure JSON for the Node handler).
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Add rag_engine to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -27,11 +33,23 @@ try:
 except ImportError:
     HAS_DOCX = False
 
-try:
-    import fitz  # PyMuPDF
-    HAS_PYMUPDF = True
-except ImportError:
-    HAS_PYMUPDF = False
+# Prefer 'pymupdf' (new import name, no deprecation warning).
+# Fall back to 'fitz' (old name, prints a warning to stdout on newer versions).
+# Redirect stdout during import so any warning print can't contaminate JSON output.
+HAS_PYMUPDF = False
+fitz = None
+
+for _mod_name in ("pymupdf", "fitz"):
+    try:
+        _saved_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        fitz = __import__(_mod_name)
+        sys.stdout = _saved_stdout
+        HAS_PYMUPDF = True
+        break
+    except ImportError:
+        sys.stdout = _saved_stdout
+        continue
 
 try:
     import pytesseract

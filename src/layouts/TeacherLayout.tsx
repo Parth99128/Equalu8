@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { Database, Layers, ClipboardList, BarChart3, LogOut, Cpu } from 'lucide-react'
+import { Database, Layers, ClipboardList, BarChart3, LogOut, Cpu, BookOpen } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 export default function TeacherLayout(){
   const { profile, logout } = useAuth()
@@ -21,6 +21,7 @@ export default function TeacherLayout(){
             <NavLink to="/teacher/ingest" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><Database size={14}/> Ingest</NavLink>
             <NavLink to="/teacher/sets" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><Layers size={14}/> Question Sets</NavLink>
             <NavLink to="/teacher/submissions" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><ClipboardList size={14}/> Submissions</NavLink>
+            <NavLink to="/teacher/materials" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><BookOpen size={14}/> Materials</NavLink>
             <NavLink to="/teacher/analytics" className={({isActive})=> `px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${isActive?'bg-white text-zinc-900':'text-zinc-400 hover:text-white'}`}><BarChart3 size={14}/> Analytics</NavLink>
           </nav>
           <div className="flex items-center gap-2">
@@ -30,10 +31,11 @@ export default function TeacherLayout(){
           </div>
         </div>
         <div className="md:hidden max-w-[1360px] mx-auto px-4 pb-3">
-          <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-900 rounded-2xl">
+          <div className="grid grid-cols-5 gap-1 p-1 bg-zinc-900 rounded-2xl">
             <NavLink to="/teacher/ingest" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><Database size={14}/>Ingest</NavLink>
             <NavLink to="/teacher/sets" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><Layers size={14}/>Sets</NavLink>
             <NavLink to="/teacher/submissions" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><ClipboardList size={14}/>Grade</NavLink>
+            <NavLink to="/teacher/materials" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><BookOpen size={14}/>Notes</NavLink>
             <NavLink to="/teacher/analytics" className={({isActive})=> `py-2 rounded-xl text-xs font-bold flex flex-col items-center gap-1 ${isActive?'bg-white text-zinc-900':'text-zinc-400'}`}><BarChart3 size={14}/>Stats</NavLink>
           </div>
         </div>

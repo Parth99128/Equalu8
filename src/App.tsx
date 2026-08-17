@@ -14,9 +14,11 @@ import Ingest from './pages/teacher/Ingest'
 import Sets from './pages/teacher/Sets'
 import Submissions from './pages/teacher/Submissions'
 import Analytics from './pages/teacher/Analytics'
+import Materials from './pages/teacher/Materials'
 import Assignments from './pages/student/Assignments'
 import Attempt from './pages/student/Attempt'
 import Feedback from './pages/student/Feedback'
+import StudyMaterials from './pages/student/StudyMaterials'
 
 function Toast({ msg }: { msg: string }) {
   return (
@@ -52,6 +54,7 @@ export default function App() {
           <Route path="/teacher/sets" element={<Sets onToast={showToast} />} />
           <Route path="/teacher/submissions" element={<Submissions onToast={showToast} />} />
           <Route path="/teacher/analytics" element={<Analytics />} />
+          <Route path="/teacher/materials" element={<Materials onToast={showToast} />} />
           <Route path="/teacher" element={<Navigate to="/teacher/ingest" replace />} />
         </Route>
 
@@ -60,6 +63,7 @@ export default function App() {
           <Route path="/student/assignments" element={<Assignments />} />
           <Route path="/student/attempt/:setId" element={<Attempt onToast={showToast} />} />
           <Route path="/student/feedback" element={<Feedback onToast={showToast} />} />
+          <Route path="/student/materials" element={<StudyMaterials />} />
           <Route path="/student" element={<Navigate to="/student/assignments" replace />} />
         </Route>
 

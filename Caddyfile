@@ -1,0 +1,47 @@
+# ── Caddyfile — Reverse proxy with automatic HTTPS ──
+# Caddy automatically provisions and renews Let's Encrypt TLS certificates.
+# It proxies all traffic to the Express server running on port 3004.
+#
+# Usage on the VM:
+#   1. Place this file at /etc/caddy/Caddyfile
+#   2. Replace YOUR_DOMAIN with your actual domain (or use the VM IP for HTTP-only)
+#   3. sudo systemctl reload caddy
+#
+# ── Option A: With a custom domain (HTTPS auto-provisioned) ──
+# Register a domain (e.g. evalu8.yourdomain.com), point its A record to the VM's
+# public IP, then uncomment the block below and replace the domain.
+
+# evalu8.yourdomain.com {
+#     reverse_proxy localhost:3004
+#
+#     # Compression
+#     encode gzip zstd
+#
+#     # Security headers
+#     header {
+#         X-Content-Type-Options nosniff
+#         X-Frame-Options DENY
+#         Referrer-Policy strict-origin-when-cross-origin
+#     }
+#
+#     # Static file caching (Vite assets are content-hashed, safe to cache long)
+#     @static path /assets/*
+#     header @static Cache-Control "public, max-age=31536000, immutable"
+# }
+
+# ── Option B: No domain yet — serve HTTP on port 80 (for initial testing) ──
+# This is the default. Once you have a domain, comment this out and use Option A.
+:80 {
+    reverse_proxy localhost:3004
+
+    encode gzip zstd
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    @static path /assets/*
+    header @static Cache-Control "public, max-age=31536000, immutable"
+}

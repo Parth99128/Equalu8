@@ -144,11 +144,12 @@ export default async function handler(req, res) {
       }
       
       // Store in Supabase if configured
-      console.log('Supabase URL:', process.env.SUPABASE_URL ? 'SET' : 'NOT SET');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+      console.log('Supabase URL:', supabaseUrl ? 'SET' : 'NOT SET');
       console.log('Supabase Service Role Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'NOT SET');
-      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      if (supabaseUrl && process.env.SUPABASE_SERVICE_ROLE_KEY) {
         console.log('Creating Supabase client...');
-        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        const supabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY);
         
         console.log('Inserting document into Supabase...');
         const { data, error } = await supabase
@@ -214,7 +215,20 @@ function splitBuffer(buffer, delimiter) {
 
 function runPythonScript(scriptPath, args) {
   return new Promise((resolve, reject) => {
-    const python = process.platform === 'win32' ? 'python' : 'python3';
+    // Resolve Python executable — prefer project venv, then system Python
+    let python = process.platform === 'win32' ? 'python' : 'python3';
+    if (process.platform === 'win32') {
+      const venvPython = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
+      if (fs.existsSync(venvPython)) {
+        python = venvPython;
+      } else {
+        // Fallback to full system path to avoid Windows Store stub
+        const systemPython = 'C:\\Users\\Parth\\AppData\\Local\\Programs\\Python\\Python314\\python.exe';
+        if (fs.existsSync(systemPython)) {
+          python = systemPython;
+        }
+      }
+    }
     console.log('Spawning Python:', python, scriptPath, args);
     
     // Set up environment with Tesseract PATH for Windows

@@ -42,7 +42,7 @@ export default function Assignments(){
                       {dueDate && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-1 ${isOverdue?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}`}><Calendar size={10}/> {isOverdue?'Overdue':dueDate.toLocaleDateString()}</span>}
                     </div>
                   </div>
-                  <button onClick={()=>nav(`/student/attempt/${s.id}`)} disabled={isOverdue} className={`px-4 py-2 rounded-full text-xs font-black flex items-center gap-1 ${isOverdue?'bg-zinc-200 text-zinc-400 cursor-not-allowed':'bg-emerald-600 text-white'}`}>{isOverdue?'Closed':<><span>Take</span> <ArrowUpRight size={14}/></>}</button>
+                  <button onClick={()=>nav(`/student/attempt/${s.id}`)} disabled={!!isOverdue} className={`px-4 py-2 rounded-full text-xs font-black flex items-center gap-1 ${isOverdue?'bg-zinc-200 text-zinc-400 cursor-not-allowed':'bg-emerald-600 text-white'}`}>{isOverdue?'Closed':<><span>Take</span> <ArrowUpRight size={14}/></>}</button>
                 </div>
               )
             })}

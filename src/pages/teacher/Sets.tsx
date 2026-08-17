@@ -15,7 +15,10 @@ import {
   ArrowRight,
   FileText,
   CheckCircle,
-  Trash2
+  Trash2,
+  Send,
+  Calendar,
+  Clock
 } from 'lucide-react'
 
 interface Module {
@@ -56,6 +59,10 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set())
   const [deletingSet, setDeletingSet] = useState<number|null>(null)
   const [confirmDeleteSet, setConfirmDeleteSet] = useState<number|null>(null)
+  const [publishing, setPublishing] = useState<number|null>(null)
+  const [scheduleSet, setScheduleSet] = useState<number|null>(null)
+  const [dueDate, setDueDate] = useState('')
+  const [timeLimit, setTimeLimit] = useState('')
 
   const parseOptions = (s:string|null)=>{ try{ const j=JSON.parse(s||''); return Array.isArray(j)?j:[] }catch{ return [] }}
 
@@ -200,6 +207,57 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
     } finally{ setDeletingSet(null); setConfirmDeleteSet(null) }
   }
 
+  const publishSet = async (setId: number, publish: boolean) => {
+    setPublishing(setId)
+    try {
+      const res = await fetch('/api/question-sets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: setId, is_published: publish })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        onToast(publish ? 'Published — students can now take it' : 'Unpublished')
+        fetchAll()
+      } else {
+        onToast(data?.error || 'Publish failed')
+      }
+    } catch {
+      onToast('Publish failed')
+    } finally {
+      setPublishing(null)
+    }
+  }
+
+  const saveSchedule = async (setId: number) => {
+    setPublishing(setId)
+    try {
+      const res = await fetch('/api/question-sets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: setId,
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+          time_limit_minutes: timeLimit ? Number(timeLimit) : null
+        })
+      })
+      const data = await res.json()
+      if (res.ok) {
+        onToast('Schedule saved')
+        setScheduleSet(null)
+        setDueDate('')
+        setTimeLimit('')
+        fetchAll()
+      } else {
+        onToast(data?.error || 'Schedule failed')
+      }
+    } catch {
+      onToast('Schedule failed')
+    } finally {
+      setPublishing(null)
+    }
+  }
+
   const getConceptColor = (coverage: number) => {
     if (coverage >= 80) return 'bg-emerald-500'
     if (coverage >= 60) return 'bg-amber-500'
@@ -250,18 +308,56 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
           <div className="flex gap-2">
             <select value={selectedSet||''} onChange={e=>setSelectedSet(Number(e.target.value)||null)} className="flex-1 rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold">
               <option value="">View existing set</option>
-              {qsets.map(s=>{ const dd=docs.find(x=>x.id===s.document_id); return <option key={s.id} value={s.id}>Set #{s.id} • {dd?.title.slice(0,22)} • {s.total_questions}Q</option>})}
+              {qsets.map(s=>{ const dd=docs.find(x=>x.id===s.document_id); return <option key={s.id} value={s.id}>Set #{s.id} • {dd?.title.slice(0,22)} • {s.total_questions}Q {s.is_published?'• 📢 Published':''}</option>})}
             </select>
             {selectedSet && confirmDeleteSet !== selectedSet && (
-              <button onClick={()=>setConfirmDeleteSet(selectedSet)} disabled={deletingSet===selectedSet} className="px-3 py-2.5 rounded-xl border bg-white text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50" title="Delete this question set">
-                <Trash2 size={16}/>
-              </button>
+              <>
+                <button onClick={()=>publishSet(selectedSet, !qsets.find(s=>s.id===selectedSet)?.is_published)} disabled={publishing===selectedSet} className="px-3 py-2.5 rounded-xl border bg-white text-violet-600 hover:bg-violet-50 hover:border-violet-300 transition-colors disabled:opacity-50 text-xs font-bold flex items-center gap-1" title="Publish / unpublish for students">
+                  {publishing===selectedSet ? '…' : <><Send size={14}/> {qsets.find(s=>s.id===selectedSet)?.is_published ? 'Unpublish' : 'Publish'}</>}
+                </button>
+                <button onClick={()=>{ const s=qsets.find(x=>x.id===selectedSet); setDueDate(s?.due_date?new Date(s.due_date).toISOString().slice(0,16):''); setTimeLimit(s?.time_limit_minutes?String(s.time_limit_minutes):''); setScheduleSet(selectedSet)}} className="px-3 py-2.5 rounded-xl border bg-white text-zinc-600 hover:bg-zinc-50 transition-colors text-xs font-bold flex items-center gap-1" title="Schedule due date & time limit">
+                  <Calendar size={14}/> Schedule
+                </button>
+                <button onClick={()=>setConfirmDeleteSet(selectedSet)} disabled={deletingSet===selectedSet} className="px-3 py-2.5 rounded-xl border bg-white text-red-500 hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50" title="Delete this question set">
+                  <Trash2 size={16}/>
+                </button>
+              </>
             )}
           </div>
           <button onClick={generate} disabled={busy||selectedDocIds.length===0||totalQuestions===0} className={`px-6 py-2.5 rounded-full font-black text-sm flex items-center gap-2 justify-center ${busy||selectedDocIds.length===0||totalQuestions===0?'bg-zinc-200 text-zinc-500':'bg-zinc-900 text-white'}`}>
             {busy? <><Loader2 className="w-3 h-3 animate-spin"/> Generating…</> : <>Generate {totalQuestions} questions</>}
           </button>
         </div>
+
+        {selectedSet && scheduleSet === selectedSet && (
+          <div className="mt-3 p-4 rounded-xl bg-violet-50 border border-violet-200 space-y-3">
+            <div className="text-sm font-bold text-violet-700 flex items-center gap-1"><Calendar size={14}/> Schedule Quiz</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold tracking-widest text-zinc-500 block mb-1">DUE DATE (optional)</label>
+                <input type="datetime-local" value={dueDate} onChange={e=>setDueDate(e.target.value)} className="w-full rounded-xl border bg-white px-3 py-2 text-sm"/>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold tracking-widest text-zinc-500 block mb-1">TIME LIMIT (minutes, optional)</label>
+                <input type="number" min="1" max="300" value={timeLimit} onChange={e=>setTimeLimit(e.target.value)} placeholder="e.g. 30" className="w-full rounded-xl border bg-white px-3 py-2 text-sm"/>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>saveSchedule(selectedSet)} disabled={publishing===selectedSet} className="text-xs font-bold px-4 py-2 rounded-full bg-violet-600 text-white disabled:opacity-50">{publishing===selectedSet?'Saving…':'Save schedule'}</button>
+              <button onClick={()=>{setScheduleSet(null); setDueDate(''); setTimeLimit('')}} className="text-xs font-bold px-4 py-2 rounded-full bg-zinc-200 text-zinc-700">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {selectedSet && (
+          <div className="mt-2 flex gap-2 flex-wrap text-[11px]">
+            {qsets.find(s=>s.id===selectedSet)?.is_published 
+              ? <span className="font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 border">📢 Published</span>
+              : <span className="font-bold px-2 py-1 rounded-full bg-zinc-100 text-zinc-500 border">Draft (not visible to students)</span>}
+            {qsets.find(s=>s.id===selectedSet)?.due_date && <span className="font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-700 border flex items-center gap-1"><Calendar size={10}/> Due: {new Date(qsets.find(s=>s.id===selectedSet)!.due_date).toLocaleString()}</span>}
+            {qsets.find(s=>s.id===selectedSet)?.time_limit_minutes && <span className="font-bold px-2 py-1 rounded-full bg-blue-100 text-blue-700 border flex items-center gap-1"><Clock size={10}/> {qsets.find(s=>s.id===selectedSet)!.time_limit_minutes} min</span>}
+          </div>
+        )}
 
         {selectedSet && confirmDeleteSet === selectedSet && (
           <div className="mt-3 flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200">

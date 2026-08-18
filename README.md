@@ -1,203 +1,420 @@
-﻿# EVALU8 — Gemma 4 Intelligent LMS
+# EVALU8 — Gemma 4 Intelligent LMS
 
-An AI-powered Learning Management System with a Python RAG engine for grounded question generation and evaluation. Built with React, TypeScript, Vite, Supabase, and Google Gemini.
+> **End-to-end evaluation assistant**: Teacher uploads a syllabus or lecture PDF → system parses it with a Python RAG pipeline → generates citation-locked questions → students attempt → Gemma 4 explains *why* each answer is right/wrong with a diagnostic "WHY" feedback loop.
 
-## Features
+---
 
-### Teacher
-- **Ingest** — Upload PDF/DOCX/TXT syllabi and lecture materials. Python extracts text, tables, diagrams, and charts, chunks them semantically, and indexes for retrieval.
-- **Analyze** — AI-driven syllabus analysis: key concepts, module structure, learning objectives, and recommended question distribution.
-- **Sets** — Generate grounded question sets (MCQ, short answer, conceptual) from ingested sources. Every question cites its grounding chunk.
-- **Grade** — Review student submissions with AI-assisted evaluation and per-answer feedback.
-- **Analytics** — Class-wide performance insights.
+## 🎯 Project Overview
 
-### Student
-- **Assignments** — View and attempt assigned question sets.
-- **Attempt** — Take quizzes with a clean, focused interface.
-- **Feedback** — Receive AI-generated feedback with conceptual gap analysis and source citations.
+EVALU8 is a full-stack AI-powered Learning Management System designed for **grounded assessment**. Unlike generic quiz generators, every question and evaluation is **citation-locked** to source material uploaded by the teacher, and every student response receives a **diagnostic WHY explanation** powered by Google's Gemma 4 (via Gemini API).
 
-## Architecture
+### Key Differentiators
+
+| Feature | Traditional LMS | EVALU8 |
+|---------|----------------|--------|
+| Question grounding | None / hallucinated | **Citation-locked to teacher PDFs** |
+| Feedback | Right/Wrong only | **WHY: mental-model gap + next step** |
+| RAG pipeline | External SaaS | **Local Python (PyMuPDF + pdfplumber + Tesseract)** |
+| Generation model | GPT-4 / Claude | **Gemma 4 via Gemini API** |
+| Deployment | Complex microservices | **Single VM, no Docker, no Kubernetes** |
+
+---
+
+## 🏗️ Architecture
 
 ```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              USER BROWSER                                    │
+│                    https://evalu8.duckdns.org                                │
+└─────────────────────────────────┬───────────────────────────────────────────┘
+                                  │ HTTPS
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           CADDY REVERSE PROXY                                │
+│                    :80 / :443 → Auto-HTTPS (Let's Encrypt)                  │
+└─────────────────────────────────┬───────────────────────────────────────────┘
+                                  │
+                    ┌─────────────┴─────────────┐
+                    ▼                           ▼
+        ┌─────────────────────┐     ┌─────────────────────┐
+        │   STATIC FRONTEND   │     │    EXPRESS API      │
+        │   (React 19 + Vite) │     │    (server.js)      │
+        │   Served from dist/ │     │    Port 3004        │
+        └─────────────────────┘     └──────────┬──────────┘
+                                               │
+                    ┌──────────────────────────┼──────────────────────────┐
+                    ▼                          ▼                          ▼
+           ┌───────────────┐          ┌───────────────┐          ┌───────────────┐
+           │  SUPABASE     │          │  PYTHON RAG   │          │  GEMINI API   │
+           │  (PostgreSQL) │          │  (subprocess) │          │  (Gemma 4)    │
+           │  Auth + DB    │          │  ingest_cli.py│          │  Generate/    │
+           └───────────────┘          └───────────────┘          │  Evaluate     │
+                                                                  └───────────────┘
+```
+
+### Technology Stack
+
+| Layer | Technology | Version |
+|-------|------------|---------|
+| **Frontend** | React + TypeScript + Vite | 19 / 5 / 7 |
+| **Styling** | Tailwind CSS | 4 |
+| **Routing** | React Router DOM | 7 |
+| **State** | React Context + Hooks | — |
+| **Backend** | Express.js | 5.2.1 |
+| **Process Manager** | PM2 | Latest |
+| **Reverse Proxy** | Caddy | 2.8+ |
+| **Database** | Supabase (PostgreSQL) | Managed |
+| **Auth** | Supabase Auth + Google OAuth | — |
+| **Python RAG** | PyMuPDF + pdfplumber + Tesseract | 3.14 |
+| **AI Generation** | Google Gemini API (Gemma 4) | 1.5-flash |
+| **Deployment** | Azure VM (B2ats_v2) + GitHub Actions | — |
+
+---
+
+## 📁 Project Structure
+
+```
+EVALU8/
+├── .github/workflows/
+│   └── deploy.yml              # CI/CD: build → test → deploy to Azure VM
+├── api/                        # Express route handlers (Vercel-compatible)
+│   ├── answers.js              # Student answer CRUD
+│   ├── auth-profile.js         # User profile management
+│   ├── documents.js            # Document CRUD
+│   ├── evaluate.js             # Answer evaluation via Gemma
+│   ├── gemma-config.js         # Model configuration
+│   ├── ingest.js               # PDF upload → Python RAG pipeline
+│   ├── question-sets.js        # Question set CRUD
+│   ├── questions.js            # Question CRUD
+│   ├── rag_chunk.py            # (Legacy) Python chunking
+│   ├── rag_evaluate.py         # (Legacy) Python evaluation
+│   ├── rag_generate.py         # (Legacy) Python generation
+│   ├── students.js             # Student roster
+│   ├── study-materials.js      # Study material upload (base64, no RAG)
+│   ├── submissions.js          # Submission handling
+│   └── syllabus-analysis.js    # Syllabus parsing
+├── deploy.sh                   # One-shot VM bootstrap script
+├── Caddyfile                   # Reverse proxy config (auto-HTTPS)
+├── server.js                   # Unified Express server (replaces Vercel)
+├── package.json
+├── requirements.txt            # Python dependencies
+├── vercel.json                 # Vercel config (legacy)
+├── public/                     # Static assets
+├── rag_engine/                 # Python RAG pipeline (core)
+│   ├── __init__.py
+│   ├── ai_client.py            # Gemini API client
+│   ├── analyzer.py             # Document analysis
+│   ├── chunking.py             # Semantic chunking with grounding
+│   ├── config.py               # Pipeline configuration
+│   ├── evaluator.py            # WHY feedback generation
+│   ├── generator.py            # Question generation
+│   ├── ingest_cli.py           # CLI entrypoint (spawned by /api/ingest)
+│   ├── pipeline.py             # Orchestration
+│   ├── retrieval.py            # Vector search (Supabase pgvector)
+│   └── README.md
+├── src/
+│   ├── components/             # Shared UI components
+│   ├── contexts/
+│   │   └── AuthContext.tsx     # Supabase auth state management
+│   ├── layouts/
+│   │   ├── StudentLayout.tsx
+│   │   └── TeacherLayout.tsx
+│   ├── lib/
+│   │   ├── api.ts              # Typed API client
+│   │   ├── googleAuth.ts       # Google OAuth helpers
+│   │   └── supabase.ts         # Supabase client (browser)
+│   ├── pages/
+│   │   ├── AuthCallback.tsx    # OAuth callback handler
+│   │   ├── Landing.tsx         # Marketing page
+│   │   ├── Login.tsx           # Email/Google login
+│   │   ├── Register.tsx        # Email/Google registration
+│   │   ├── student/
+│   │   │   ├── Assignments.tsx
+│   │   │   ├── Attempt.tsx
+│   │   │   ├── Feedback.tsx
+│   │   │   └── StudyMaterials.tsx
+│   │   └── teacher/
+│   │       ├── Analytics.tsx
+│   │       ├── Analyze.tsx
+│   │       ├── Ingest.tsx      # PDF upload + RAG pipeline
+│   │       ├── Sets.tsx        # Question set management
+│   │       └── Submissions.tsx
+│   ├── App.tsx                 # Routes + providers
+│   ├── main.tsx                # Entry point
+│   └── index.css               # Global styles
+├── supabase/
+│   └── migrations/             # SQL schema (run in order)
+│       ├── 000_initial_schema.sql
+│       ├── 001_add_syllabus_analysis_and_question_types.sql
+│       └── 002_add_answers_table.sql
+└── .env.example                # Environment template
+```
+
+---
+
+## 🚀 Features
+
+### Teacher Workflow
+1. **Ingest** — Upload syllabus/lecture PDF → Python RAG extracts text, tables, diagrams (via Gemini Vision), OCR fallback
+2. **Analyze** — View extracted chunks, verify grounding quality
+3. **Generate** — Create citation-locked question sets (MCQ, Short Answer, Conceptual)
+4. **Review** — Grade submissions with Gemma-powered WHY feedback
+5. **Analytics** — Class performance, question difficulty, concept gaps
+
+### Student Workflow
+1. **Browse** — See assigned question sets
+2. **Attempt** — Answer questions with source citations visible
+3. **Feedback** — Receive WHY explanation: *what you missed, why, next step*
+
+### RAG Pipeline (Python)
+```
+PDF → pdfplumber (text + tables→Markdown)
+    → PyMuPDF (fallback text + image extraction)
+    → Gemini Vision (diagram/chart description)
+    → Tesseract OCR (scanned pages)
+    → Semantic chunking (grounding metadata preserved)
+    → Supabase pgvector storage
+    → Retrieval → Context building → Gemma 4 generation
+```
+
+---
+
+## ⚙️ Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon key (client) |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role (server) |
+| `VITE_SUPABASE_URL` | ✅ | Duplicate for Vite build |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Duplicate for Vite build |
+| `VITE_GOOGLE_CLIENT_ID` | ✅ | Google OAuth client ID |
+| `GEMINI_API_KEY` | ✅ | Google AI Studio API key |
+| `GEMINI_MODEL` | ❌ | Default: `gemini-1.5-flash` |
+| `PORT` | ❌ | Server port (default: 3004) |
+
+---
+
+## 🛠️ Local Development
+
+### Prerequisites
+- Node.js 20+
+- Python 3.11+
+- Tesseract OCR (`brew install tesseract` / `apt install tesseract-ocr`)
+- Supabase project (local or cloud)
+- Google Cloud project (OAuth + Gemini API)
+
+### Setup
+
+```bash
+# 1. Clone
+git clone https://github.com/Parth99128/Equalu8.git
+cd Equalu8
+
+# 2. Install Node deps
+npm install
+
+# 3. Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+deactivate
+
+# 4. Environment
+cp .env.example .env
+# Edit .env with your keys
+
+# 5. Database
+# Run migrations in supabase/migrations/ in order on your Supabase project
+
+# 6. Dev servers (two terminals)
+npm run dev          # Vite frontend on :5173
+# OR unified server:
+npm run start        # Express on :3004 (serves API + static)
+```
+
+---
+
+## 🚀 Production Deployment (Azure VM)
+
+### One-Time VM Setup
+
+```bash
+# On fresh Ubuntu 24.04 VM
+ssh azureuser@YOUR_VM_IP 'bash -s' < deploy.sh
+```
+
+`deploy.sh` installs: Node 20, Python 3, Tesseract, Caddy, PM2, clones repo, builds, starts services.
+
+### CI/CD (GitHub Actions)
+
+**Required Secrets** (Repo → Settings → Secrets → Actions):
+| Secret | Value |
+|--------|-------|
+| `VM_HOST` | `20.219.5.41` |
+| `VM_USER` | `azureuser` |
+| `VM_SSH_KEY` | Private SSH key (`cat ~/.ssh/id_rsa`) |
+| `VITE_SUPABASE_URL` | `https://...supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | `eyJ...` |
+| `VITE_GOOGLE_CLIENT_ID` | `123...googleusercontent.com` |
+
+**On every `git push main`:**
+1. GitHub Actions builds frontend
+2. SSHes to VM → `git pull` → `npm install` → `npm run build` → `pm2 restart`
+3. Health check verifies deployment
+
+### Custom Domain (Free)
+
+**DuckDNS** (2 min):
+1. [duckdns.org](https://duckdns.org) → GitHub login → subdomain `yourname.duckdns.org`
+2. Point A record to VM IP
+3. Update Caddy: `yourname.duckdns.org { reverse_proxy localhost:3004 }`
+4. `sudo systemctl reload caddy` → Auto-HTTPS via Let's Encrypt
+
+**Update OAuth:**
+- Google Cloud: Add `https://yourname.duckdns.org` + `/auth/callback`
+- Supabase: Site URL + Redirect URL same
+
+---
+
+## 🗄️ Database Schema (Key Tables)
+
+```sql
+-- Users & roles
+profiles (id, email, name, role, avatar)
+
+-- Teacher content
+documents (id, teacher_id, title, file_path, extraction_stats, status)
+question_sets (id, document_id, teacher_id, name, questions_json)
+questions (id, set_id, type, prompt, answer, grounding_citations)
+
+-- Student work
+submissions (id, student_id, set_id, answers_json, score, feedback_json)
+answers (id, submission_id, question_id, student_answer, evaluation_json)
+
+-- Study materials (base64, no RAG)
+study_materials (id, teacher_id, title, file_base64, mime_type)
+```
+
+Run migrations in order: `000 → 001 → 002`.
+
+---
+
+## 🔐 Authentication Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Browser   │────▶│  Supabase   │────▶│  Your App   │
+│  (React)    │     │   Auth      │     │  (Profile)  │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                   │
+       │ 1. signInWithOAuth│                   │
+       │  (Google)         │                   │
+       ▼                   ▼                   ▼
 ┌─────────────────────────────────────────────────────┐
-│  Frontend (React + TypeScript + Vite + Tailwind)    │
-│  ├── Teacher: Ingest → Analyze → Sets → Grade       │
-│  └── Student: Assignments → Attempt → Feedback      │
-├─────────────────────────────────────────────────────┤
-│  API Layer (Vercel Serverless Functions)            │
-│  ├── ingest.js    — multipart upload → Python CLI   │
-│  ├── syllabus-analysis.js — AI syllabus breakdown   │
-│  ├── question-sets.js — question set CRUD           │
-│  ├── questions.js   — question CRUD                 │
-│  ├── answers.js     — answer storage                │
-│  ├── submissions.js — submission management         │
-│  ├── evaluate.js    — AI evaluation endpoint        │
-│  ├── documents.js   — document library              │
-│  ├── students.js    — student profiles              │
-│  └── auth-profile.js — auth + profile management    │
-├─────────────────────────────────────────────────────┤
-│  Python RAG Engine (rag_engine/)                    │
-│  ├── ingest_cli.py — text/table/vision extraction   │
-│  ├── chunking.py   — semantic splitter w/ metadata  │
-│  ├── retrieval.py  — lexical + grounding ranking    │
-│  ├── generator.py  — Gemini-grounded question gen   │
-│  ├── evaluator.py  — per-answer WHY diagnosis       │
-│  ├── analyzer.py   — syllabus structure analysis    │
-│  ├── ai_client.py  — Gemini API client              │
-│  └── pipeline.py   — end-to-end orchestration       │
-├─────────────────────────────────────────────────────┤
-│  Supabase (PostgreSQL + Auth)                       │
-│  └── documents, question_sets, questions, answers,  │
-│      submissions, profiles                          │
+│  Redirect to /auth/callback                         │
+│  → supabase.auth.getSession()                       │
+│  → Create profile if missing (role from localStorage)│
+│  → Navigate to /teacher/ingest or /student/assignments│
 └─────────────────────────────────────────────────────┘
 ```
 
-### RAG Pipeline Flow
+- **Email/Password**: `signUp` → `signInWithPassword` → profile creation
+- **Google OAuth**: `signInWithOAuth` → callback → profile creation
+- **Session**: Persisted in localStorage, restored on refresh via `onAuthStateChange`
 
-```
-                              Upload → Extract Text/Tables/Visuals → Semantic Chunking → Index in Supabase
-                                                                    ↓
-                                          Retrieve Relevant Chunks ← Generate Questions
-                                                                    ↓
-                                               Evaluate Answers → Feedback w/ Citations
-```
+---
 
-- **Chunking** — Sentence-aware splitter (1100 chars, 140 overlap) with grounding scores and page metadata.
-- **Retrieval** — Lexical relevance + grounding score ranking builds RAG context.
-- **Generation** — Calls Gemini 1.5 Flash via Google Generative Language API. Enforces verbatim grounding chunk citations — no question without a source.
-- **Evaluation** — Per-answer diagnosis: feedback + conceptual gap analysis, chunk-cited, constructive.
+## 🧪 Testing
 
-## Models flow
+```bash
+# Frontend type-check + build
+npm run build
 
-""if one model i.e primary or else fails then the architecture follows the following flow:""
-                                          |
-                            1. gemma-4-26b-a4b-it ← primary (Gemma 4) 
-                            2. gemma-4-31b-it ← Gemma 4
-                            3. gemini-2.5-flash ← Gemini Flash
-                            4. gemini-2.5-pro
-                            5. gemini-2.0-flash
-                            6. gemini-2.0-flash-lite
-                            7. gemini-1.5-flash
-                            8. gemini-1.5-pro
-                            9. gemini-1.0-pro
+# Python pipeline test
+cd rag_engine
+python -m ingest_cli --file ../test.pdf --filename test.pdf
 
-## Tech Stack
-
-| Layer    | Technology |
-|----------|------------|
-| Frontend | React 19, TypeScript, Vite 7, Tailwind CSS 4, Framer Motion |
-| Backend  | Vercel Serverless Functions (Node.js) |
-| AI/RAG   | Python 3, gemma-4-26b-a4b-it, pdfplumber, PyMuPDF, Tesseract OCR |
-| Database | Supabase (PostgreSQL + Auth) |
-| Auth     | Supabase Auth + Google OAuth |
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Python 3.10+
-- [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) (for scanned PDF support)
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd evalu8
-   ```
-
-2. **Install Node dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Supabase and Gemini API keys
-   ```
-
-5. **Set up the database**
-   - Create a Supabase project
-   - Run the SQL migrations in `supabase/migrations/` in order
-
-6. **Run the dev server**
-   ```bash
-   npx vercel dev
-   # or
-   npm run dev
-   ```
-
-   The app will be available at `http://localhost:3004`.
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-only) |
-| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GEMINI_API_KEY` | Google Gemini API key |
-| `GEMINI_MODEL` | Gemini model (default: `gemini-1.5-flash`) |
-
-See `.env.example` for all variables.
-
-## Project Structure
-
-```
-├── api/                    # Vercel serverless functions
-├── rag_engine/             # Python RAG engine
-├── src/
-│   ├── components/         # Shared React components
-│   ├── contexts/           # React contexts (Auth)
-│   ├── layouts/            # Teacher & Student layouts
-│   ├── lib/                # API client, Supabase, Google Auth
-│   └── pages/
-│       ├── teacher/        # Ingest, Analyze, Sets, Submissions, Analytics
-│       └── student/        # Assignments, Attempt, Feedback
-├── supabase/migrations/    # SQL schema migrations
-├── public/                 # Static assets
-├── .env.example            # Environment variable template
-└── vercel.json.example     # Vercel config template (secrets removed)
+# API health
+curl http://localhost:3004/api/health
 ```
 
-## Document Ingestion
+---
 
-The ingest pipeline supports multi-source extraction:
+## 📊 Monitoring & Logs
 
-| Source Type | How it is handled |
-|-------------|-------------------|
-| **Text-based PDFs** | Extracted via pdfplumber / PyMuPDF |
-| **Tables in PDFs** | Extracted via `pdfplumber.extract_tables()`, converted to Markdown format |
-| **Tables in DOCX** | Extracted via python-docx table API, converted to Markdown |
-| **Diagrams / Charts / Flowcharts** | Gemini vision model describes visual content (type, labels, structure, data values) |
-| **Scanned/image PDFs** | OCR fallback via Tesseract (renders pages at 150 DPI) |
-| **DOCX** | Paragraphs + tables extracted via python-docx |
-| **TXT/MD** | Direct file read |
+```bash
+# PM2
+pm2 status
+pm2 logs evalu8-server
+pm2 monit
 
-### Extraction Pipeline
+# Caddy
+sudo systemctl status caddy
+sudo journalctl -u caddy -f
 
-```
-1. pdfplumber: text + table extraction (tables converted to Markdown)
-2. PyMuPDF: text (if pdfplumber got nothing) + vision model for images/diagrams
-3. Tesseract OCR: fallback for scanned/image-only PDFs
+# Supabase
+# Dashboard → Logs → Auth / Database / Edge Functions
 ```
 
-The vision model (Gemini) analyzes embedded images and diagram-heavy pages, producing structured text descriptions that capture:
-- Visual type (flowchart, bar chart, diagram, etc.)
-- All labels, nodes, and text elements
-- Structure and relationships (arrows, connections, hierarchy)
-- Data values, axes, and numerical information
+---
 
-Extracted content is semantically chunked with grounding metadata and stored in Supabase for retrieval. The output includes `extraction_stats` showing how many tables and visuals were found.
+## 🔧 Troubleshooting
 
-## License
+| Issue | Fix |
+|-------|-----|
+| `supabaseUrl is required` | `.env` missing Vite vars → rebuild |
+| Python spawn ENOENT | Use full venv path in `ingest.js` |
+| Fitz deprecation | `import pymupdf` with warning filter |
+| Express 5 wildcard | Use `{*path}` not `*` |
+| Login fails | Check Supabase providers + redirect URLs |
+| Caddy no HTTPS | Domain must resolve to VM IP; check DNS |
 
-This project is for educational purposes.
+---
+
+## 📈 Roadmap
+
+- [ ] Automated test suite (Vitest + Playwright)
+- [ ] Staging environment (preview deployments)
+- [ ] WebSocket for real-time grading updates
+- [ ] Export results to CSV/PDF
+- [ ] Multi-language support
+- [ ] Plugin architecture for custom question types
+
+---
+
+## 🤝 Contributing
+
+1. Fork → feature branch → PR
+2. `npm run build` must pass
+3. Follow existing code style (ESLint + Prettier)
+4. Update migrations if schema changes
+
+---
+
+## 📄 License
+
+Educational / research use. Built for **Google AI x Gemma 4** hackathon track.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Google Gemma Team** — Model access
+- **Supabase** — Auth + Database + pgvector
+- **PyMuPDF / pdfplumber / Tesseract** — Document extraction
+- **Caddy** — Zero-config HTTPS
+- **Azure for Students** — Free compute credit
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/Parth99128/Equalu8/issues)
+- **Architecture questions**: See `README.md` for pipeline details
+- **Deployment help**: Check `deploy.sh` comments
+
+---
+
+**Live Demo**: https://evalu8.duckdns.org  
+**Repository**: https://github.com/Parth99128/Equalu8

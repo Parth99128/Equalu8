@@ -55,7 +55,7 @@ sudo npm install -g pm2
 echo "   PM2: $(pm2 --version)"
 
 # ── 6. Clone/update the repository ──
-APP_DIR="/home/azureuser/Equalu8"
+APP_DIR="/home/azureuser/evalu8"
 echo "📂 Cloning repository to $APP_DIR..."
 if [ -d "$APP_DIR" ]; then
   cd "$APP_DIR"
@@ -110,8 +110,8 @@ fi
 # ── 10. Start the app with PM2 ──
 echo "🚀 Starting app with PM2..."
 cd "$APP_DIR"
-pm2 delete equalu8 2>/dev/null || true
-pm2 start server.js --name equalu8
+pm2 delete evalu8-server 2>/dev/null || true
+pm2 start server.js --name evalu8-server
 pm2 save
 pm2 startup systemd -u azureuser --hp /home/azureuser 2>/dev/null || true
 

@@ -76,14 +76,14 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            cd /home/azureuser/Equalu8
+            cd /home/azureuser/evalu8
             git pull origin main
             npm install
             npm run build
             source .venv/bin/activate
             pip install -r requirements.txt
             deactivate
-            pm2 restart equalu8
+            pm2 restart evalu8-server
             echo "✅ Deployed at $(date)"
 
       - name: Verify deployment

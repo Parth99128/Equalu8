@@ -131,7 +131,10 @@ export default async function handler(req, res) {
       // Call Python script for text extraction and chunking
       const __dirname = path.dirname(new URL(import.meta.url).pathname);
       // On Windows, file:// URLs start with /C:/... so we need to remove the leading slash
-      const normalizedDirname = __dirname.startsWith('/') ? __dirname.slice(1) : __dirname;
+      // On Linux, keep the leading slash (absolute path). Only strip on Windows.
+      const normalizedDirname = process.platform === 'win32' && __dirname.startsWith('/')
+        ? __dirname.slice(1)
+        : __dirname;
       const pythonScript = path.join(normalizedDirname, '..', 'rag_engine', 'ingest_cli.py');
       console.log('Python script path:', pythonScript);
       console.log('Calling Python script with args:', [tmpPath, filename]);

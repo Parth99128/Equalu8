@@ -97,10 +97,36 @@ async function callModel(prompt){
 // Generates from the actual document chunks so teacher flow never breaks
 // When GEMINI_API_KEY is set, this path is never taken (API is the only source)
 // ————————————————————————————————————————————————
+
+/**
+ * Clean chunk text by removing table markdown, visual content markers,
+ * and other extraction artifacts that shouldn't appear in questions.
+ */
+function cleanChunkText(text) {
+  if (!text) return '';
+  return text
+    // Remove [TABLE]...[/TABLE] blocks
+    .replace(/\[TABLE\][\s\S]*?\[\/TABLE\]/g, '')
+    // Remove [VISUAL CONTENT...]...[/VISUAL CONTENT] blocks
+    .replace(/\[VISUAL CONTENT[^\]]*\][\s\S]*?\[\/VISUAL CONTENT\]/g, '')
+    // Remove standalone [TABLE] or [/TABLE] markers
+    .replace(/\[\/?TABLE\]/g, '')
+    // Remove standalone [VISUAL CONTENT...] or [/VISUAL CONTENT] markers
+    .replace(/\[\/?VISUAL CONTENT[^\]]*\]/g, '')
+    // Remove markdown table syntax (| ... | ... |)
+    .replace(/^\s*\|.*\|\s*$/gm, '')
+    // Remove table separator rows (| --- | --- |)
+    .replace(/^\s*\|[\s\-:|]+\|\s*$/gm, '')
+    // Collapse multiple newlines
+    .replace(/\n{3,}/g, '\n\n')
+    // Trim whitespace
+    .trim();
+}
+
 function localGenerate(doc, questionTypes = {mcq: 2, short: 2, conceptual: 2}, moduleFilter = null, documentWeights = null){
   const chunks = doc.chunks || [];
   const title = doc.title || 'Course Module';
-  const allText = chunks.map(c=>c.text).join(' ') || doc.content || '';
+  const allText = chunks.map(c=>cleanChunkText(c.text)).join(' ') || cleanChunkText(doc.content) || '';
   
   // Filter chunks by module if moduleFilter provided
   let filteredChunks = chunks;
@@ -125,7 +151,8 @@ function localGenerate(doc, questionTypes = {mcq: 2, short: 2, conceptual: 2}, m
   // Extract candidate concepts from chunks (capitalized phrases / key nouns)
   const conceptPool = [];
   for(const ch of filteredChunks){
-    const m = ch.text.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}/g);
+    const cleanedText = cleanChunkText(ch.text);
+    const m = cleanedText.match(/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}/g);
     if(m) conceptPool.push(...m.slice(0,3));
   }
   const uniq = [...new Set(conceptPool)].slice(0,20);
@@ -136,6 +163,12 @@ function localGenerate(doc, questionTypes = {mcq: 2, short: 2, conceptual: 2}, m
   const shortCount = Math.max(0, questionTypes.short || 0);
   const conceptualCount = Math.max(0, questionTypes.conceptual || 0);
   const questionCount = mcqCount + shortCount + conceptualCount;
+
+  // Create cleaned chunks for template use
+  const cleanedChunks = filteredChunks.map(ch => ({
+    ...ch,
+    text: cleanChunkText(ch.text)
+  }));
 
   const templates = [];
   
@@ -268,21 +301,21 @@ function localGenerate(doc, questionTypes = {mcq: 2, short: 2, conceptual: 2}, m
   // Build templates based on requested counts
   for(let i = 0; i < mcqCount; i++) {
     const templateFn = mcqTemplates[i % mcqTemplates.length];
-    templates.push(templateFn(filteredChunks[i % Math.max(1, filteredChunks.length)], pickConcept(i, 'Core Principles')));
+    templates.push(templateFn(cleanedChunks[i % Math.max(1, cleanedChunks.length)], pickConcept(i, 'Core Principles')));
   }
   
   for(let i = 0; i < shortCount; i++) {
     const templateFn = shortTemplates[i % shortTemplates.length];
-    templates.push(templateFn(filteredChunks[(mcqCount + i) % Math.max(1, filteredChunks.length)], pickConcept(mcqCount + i, 'Iterative Learning')));
+    templates.push(templateFn(cleanedChunks[(mcqCount + i) % Math.max(1, cleanedChunks.length)], pickConcept(mcqCount + i, 'Iterative Learning')));
   }
   
   for(let i = 0; i < conceptualCount; i++) {
     const templateFn = conceptualTemplates[i % conceptualTemplates.length];
-    templates.push(templateFn(filteredChunks[(mcqCount + shortCount + i) % Math.max(1, filteredChunks.length)], pickConcept(mcqCount + shortCount + i, 'Generalization')));
+    templates.push(templateFn(cleanedChunks[(mcqCount + shortCount + i) % Math.max(1, cleanedChunks.length)], pickConcept(mcqCount + shortCount + i, 'Generalization')));
   }
 
   return templates.map((t,i)=>{
-    const ch = filteredChunks[i % Math.max(1,filteredChunks.length)] || { text: allText.slice(i*180, i*180+260) || title, id:i, page:1, tokens: 30, grounding_score: "0.91" };
+    const ch = cleanedChunks[i % Math.max(1,cleanedChunks.length)] || { text: allText.slice(i*180, i*180+260) || title, id:i, page:1, tokens: 30, grounding_score: "0.91" };
     const correct = typeof t.ans === 'function' ? t.ans(ch) : t.ans;
     let options = null;
     if(t.type==='mcq'){

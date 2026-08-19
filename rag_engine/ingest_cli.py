@@ -281,13 +281,19 @@ def extract_text_from_pdf(filepath: str) -> str:
             print(f"PyMuPDF error: {e}", file=sys.stderr)
 
     # ── Pass 3: OCR fallback for scanned/image-based PDFs ──
-    if not text_parts and HAS_PYMUPDF and HAS_TESSERACT:
+    # Run OCR if we have very little meaningful text (likely a scanned PDF)
+    total_text_len = sum(len(t) for t in text_parts)
+    if total_text_len < 100 and HAS_PYMUPDF and HAS_TESSERACT:
         try:
-            print("No text found — attempting OCR with Tesseract...", file=sys.stderr)
+            print(f"Little text extracted ({total_text_len} chars) — attempting OCR with Tesseract...", file=sys.stderr)
             doc = fitz.open(filepath)
+            ocr_text_parts = []
+            
             for page_num, page in enumerate(doc):
-                # First try embedded images
+                # First try embedded images on this page
                 images = page.get_images()
+                page_ocr_text = ""
+                
                 for img in images:
                     xref = img[0]
                     base_image = doc.extract_image(xref)
@@ -297,22 +303,33 @@ def extract_text_from_pdf(filepath: str) -> str:
                         image = image.convert('RGB')
                     text = pytesseract.image_to_string(image)
                     if text.strip():
-                        text_parts.append(text)
-
-                # If no text from embedded images, render pages as images and OCR
-                if not text_parts:
-                    for page_num, page in enumerate(doc):
-                        pix = page.get_pixmap(dpi=150)
-                        img_data = pix.tobytes("png")
-                        image = Image.open(io.BytesIO(img_data))
-                        if image.mode != 'RGB':
-                            image = image.convert('RGB')
-                        text = pytesseract.image_to_string(image)
-                        if text.strip():
-                            text_parts.append(text)
-                        print(f"Page {page_num + 1} OCR text length: {len(text)}", file=sys.stderr)
+                        page_ocr_text += text + "\n"
+                
+                # If no text from embedded images, render page as image and OCR
+                if not page_ocr_text.strip():
+                    pix = page.get_pixmap(dpi=150)
+                    img_data = pix.tobytes("png")
+                    image = Image.open(io.BytesIO(img_data))
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
+                    text = pytesseract.image_to_string(image)
+                    if text.strip():
+                        page_ocr_text += text + "\n"
+                
+                if page_ocr_text.strip():
+                    ocr_text_parts.append(page_ocr_text)
+                    print(f"Page {page_num + 1} OCR text length: {len(page_ocr_text)}", file=sys.stderr)
 
             doc.close()
+            
+            # If OCR got meaningful text, use it instead
+            ocr_total = sum(len(t) for t in ocr_text_parts)
+            if ocr_total > total_text_len:
+                print(f"OCR extracted {ocr_total} chars (vs {total_text_len} from pdfplumber) — using OCR result", file=sys.stderr)
+                text_parts = ocr_text_parts
+            else:
+                print(f"OCR extracted {ocr_total} chars — keeping original extraction", file=sys.stderr)
+                
         except Exception as e:
             print(f"OCR error: {e}", file=sys.stderr)
 

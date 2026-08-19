@@ -220,16 +220,19 @@ function runPythonScript(scriptPath, args) {
   return new Promise((resolve, reject) => {
     // Resolve Python executable — prefer project venv, then system Python
     let python = process.platform === 'win32' ? 'python' : 'python3';
-    if (process.platform === 'win32') {
-      const venvPython = path.join(process.cwd(), '.venv', 'Scripts', 'python.exe');
-      if (fs.existsSync(venvPython)) {
-        python = venvPython;
-      } else {
-        // Fallback to full system path to avoid Windows Store stub
-        const systemPython = 'C:\\Users\\Parth\\AppData\\Local\\Programs\\Python\\Python314\\python.exe';
-        if (fs.existsSync(systemPython)) {
-          python = systemPython;
-        }
+    
+    // Check for virtual environment on both Windows and Linux
+    const venvPython = process.platform === 'win32'
+      ? path.join(process.cwd(), '.venv', 'Scripts', 'python.exe')
+      : path.join(process.cwd(), '.venv', 'bin', 'python');
+    
+    if (fs.existsSync(venvPython)) {
+      python = venvPython;
+    } else if (process.platform === 'win32') {
+      // Fallback to full system path to avoid Windows Store stub
+      const systemPython = 'C:\\Users\\Parth\\AppData\\Local\\Programs\\Python\\Python314\\python.exe';
+      if (fs.existsSync(systemPython)) {
+        python = systemPython;
       }
     }
     console.log('Spawning Python:', python, scriptPath, args);

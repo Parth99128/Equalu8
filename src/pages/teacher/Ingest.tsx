@@ -21,7 +21,16 @@ export default function Ingest({ onToast }: { onToast: (m:string)=>void }){
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/ingest', { method: 'POST', body: formData })
-      const data = await res.json()
+      // Read as text first: if the server/proxy returns an empty or HTML
+      // error page (502/504/Caddy), res.json() throws the cryptic
+      // "Unexpected end of JSON input" — surface the real message instead.
+      const raw = await res.text()
+      let data: any = null
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        throw new Error(raw.slice(0, 200) || `Upload failed (HTTP ${res.status})`)
+      }
       if(res.ok && data?.id){ 
         onToast('Document indexed'); 
         fetchDocs()

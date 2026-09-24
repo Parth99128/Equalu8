@@ -1,76 +1,43 @@
 import supabase from './db-client.js';
+import { callModel } from './free-llm.js';
 
-function envKey(){
-  console.log('[eval] envKey check:', process.env.GEMINI_API_KEY ? 'FOUND (length: ' + process.env.GEMINI_API_KEY.length + ')' : 'NOT FOUND');
-  return process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMMA_API_KEY || process.env.VITE_GEMINI_API_KEY || null;
+// Lone backslashes from chemistry text break JSON.parse — escape only those
+// that don't start a valid JSON escape sequence.
+function repairJson(blob) {
+  return blob.replace(/\\(?![\"\\/bfnrtu])/g, '\\\\');
 }
-async function viaGemini(prompt){
-  const key = envKey();
-  if(!key) return null;
-  const models=['gemma-4-26b-a4b-it','gemma-4-31b-it','gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-flash','gemini-1.5-pro','gemini-1.0-pro'];
-  for(const m of models){
-    try{
-      console.log('[eval] viaGemini: Trying model:', m);
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.38,maxOutputTokens:8192}})});
-      console.log('[eval] viaGemini: Response status:', r.status);
-      if(r.status===404) continue;
-      if(!r.ok){
-        const t=await r.text();
-        console.log('[eval] viaGemini: Error response:', t.slice(0,600));
-        if(r.status===400||r.status===403||String(t).toLowerCase().includes('api key')) throw new Error(t.slice(0,600));
-        continue;
-      }
-      const j=await r.json(); 
-      const parts = j?.candidates?.[0]?.content?.parts;
-      if(parts && parts.length > 0){
-        // Handle thinking tokens - find the non-thought part
-        let text = '';
-        for(const part of parts){
-          if(part.text && !part.thought){
-            text = part.text;
-            break;
-          }
-        }
-        // Fallback to first part if no non-thought part found
-        if(!text && parts[0].text){
-          text = parts[0].text;
-        }
-        if(text){
-          console.log('[eval] viaGemini: Success, got response length:', text.length);
-          return text;
-        }
-      }
-    }catch(e){ 
-      console.log('[eval] viaGemini: Error:', e.message?.slice(0,200));
-      if(String(e.message).toLowerCase().includes('key')) throw e; 
-      continue; 
-    }
+
+// Normalize STEM answers before comparison: whitespace/case/arrow/format tolerant.
+function normStem(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[₂]/g, '_2').replace(/[₃]/g, '_3').replace(/[₄]/g, '_4')
+    .replace(/[²]/g, '^2').replace(/[³]/g, '^3')
+    .replace(/<=>|⇌|↔/g, '->').replace(/=>|→|⟶/g, '->').replace(/←/g, '<-')
+    .replace(/\\vec\{([a-z])\}/g, '$1').replace(/[\s_^*]+/g, '')
+    .replace(/[,;]+/g, '')
+    .trim();
+}
+
+// Extract ring-containing SMILES-like tokens (c1ccccc1, C1CCCCC1, ...).
+function extractSmiles(s) {
+  const out = [];
+  const re = /(?<![A-Za-z0-9])(?=[A-Za-z0-9\[])([A-Za-z0-9@+\-#=\(\)\[\]\/\\%.]{4,120})(?![A-Za-z0-9])/g;
+  let m;
+  while ((m = re.exec(String(s || ''))) !== null) {
+    const tok = m[1];
+    if (/\d/.test(tok) && /[Cc]/.test(tok)) out.push(tok);
+    if (out.length >= 6) break;
   }
-  return null;
+  return [...new Set(out)];
 }
-async function viaPollinations(prompt){
-  const short = prompt.slice(0,1500).replace(/\n/g,' ').trim();
-  let tries=0;
-  while(tries<4){
-    tries++;
-    const nonce = Math.floor(Math.random()*9999999);
-    const enc = encodeURIComponent(short + ` id:${nonce}`);
-    const url = `https://text.pollinations.ai/${enc}?seed=${Math.floor(Math.random()*999999)}`;
-    try{
-      const res = await fetch(url, { headers:{ 'User-Agent':'EVALU8/2.0' } });
-      const text = await res.text();
-      if(res.ok && text && !/queue full|payment required/i.test(text) && text.trim().length>10) return text;
-      await new Promise(r=>setTimeout(r, 1100*tries));
-    }catch(e){ await new Promise(r=>setTimeout(r, 900)); }
-  }
-  return null;
-}
-async function callModel(prompt){
-  const t1 = await viaGemini(prompt);
-  if(t1) return t1;
-  const t2 = await viaPollinations(prompt);
-  if(t2) return t2;
-  return null;
+
+// Authoritative SMILES equivalence lives in Python (RDKit). This Node
+// fallback scores exact normalized matches only — equivalent-but-rewritten
+// SMILES (aromatic vs Kekule) still earn credit via the AI path + name match.
+function smilesEqual(a, b) {
+  const norm = (s) => String(s || '').replace(/\s+/g, '');
+  return norm(a) === norm(b);
 }
 
 // Local WHY evaluation — grounded in the question's chunk, still explains the conceptual gap
@@ -80,6 +47,14 @@ function localEvaluate(question, studentAnswer){
   const points = question.points || 10;
   if(!sa || sa.length < 2){
     return { is_correct:false, score:0, feedback: `No substantive answer — the grounded chunk notes: "${(question.grounding_chunk||'').slice(0,120)}…". Gemma flags missing engagement with the cited source.`, conceptual_gap: "Gap: Absence of retrieval — re-read the cited chunk and restate the core idea in one sentence focusing on WHY." }
+  }
+  // Cyclic-structure answers: identical SMILES (formatting ignored) = full credit.
+  const expSmiles = extractSmiles(question.correct_answer);
+  const gotSmiles = extractSmiles(studentAnswer);
+  if (expSmiles.length && gotSmiles.some((g) => expSmiles.some((e) => smilesEqual(g, e)))) {
+    return { is_correct: true, score: points,
+      feedback: `Correct — your structure matches the grounded answer "${question.correct_answer.slice(0,120)}" (chunk: "${(question.grounding_chunk||'').slice(0,90)}…").`,
+      conceptual_gap: "No gap. Stretch: name one isomer and explain how its properties differ." };
   }
   if(question.question_type==='mcq'){
     const isCorrect = sa===qa || qa.includes(sa.slice(0,12)) || sa.includes(qa.slice(0,12));
@@ -97,10 +72,24 @@ function localEvaluate(question, studentAnswer){
     if(isCorrect) return { is_correct:true, score: points, feedback: `Correct — matches the grounded answer and the chunk: "${(question.grounding_chunk||'').slice(0,110)}…".`, conceptual_gap: "No gap. Next: link this concept to a concrete example from the lecture." };
     return { is_correct:false, score:0, feedback: `Not aligned with the grounded answer "${question.correct_answer}". Grounded source: "${(question.grounding_chunk||'').slice(0,120)}…".`, conceptual_gap: "Gap: shallow pattern match vs grounded reasoning. Re-read the chunk and justify the correct choice in one sentence." };
   }
-  // short / conceptual — keyword coverage + length heuristics, but always WHY
+  // short / conceptual — keyword + STEM-formula coverage, but always WHY.
+  // Old code split on \W+ and dropped symbols (H2SO4 fragments, ∫, x^2).
   const keywords = qa.split(/\W+/).filter(w=>w.length>4).slice(0,6);
+  const formulas = [...new Set([
+    ...(String(question.correct_answer||'').match(/(?:[A-Z][a-z]?\d+(?:[A-Z][a-z]?\d*)*|\\vec\{[A-Za-z]+\}|d\/d\w+|[A-Za-z]\^[\w(]+|∫|∂)/g) || []),
+  ])].slice(0,6);
   const matched = keywords.filter(k=> sa.includes(k)).length;
-  const coverage = matched / Math.max(1, keywords.length);
+  const matchedFormulas = formulas.filter(f=> normStem(studentAnswer).includes(normStem(f))).length;
+  // Exact STEM match (formula/equation tolerant to formatting) = full credit.
+  if (formulas.length > 0 && normStem(studentAnswer) && normStem(question.correct_answer) &&
+      (normStem(studentAnswer) === normStem(question.correct_answer) ||
+       normStem(studentAnswer).includes(normStem(question.correct_answer)) ||
+       normStem(question.correct_answer).includes(normStem(studentAnswer)))) {
+    return { is_correct: true, score: points,
+      feedback: `Correct — symbolic match with the grounded answer "${question.correct_answer.slice(0,120)}" (chunk: "${(question.grounding_chunk||'').slice(0,90)}…"). Formatting differences ignored.`,
+      conceptual_gap: "No gap. Stretch: derive the result one alternative way." };
+  }
+  const coverage = (matched + matchedFormulas) / Math.max(1, keywords.length + formulas.length);
   if(coverage >= 0.65){
     const sc = coverage>=0.85 ? points : Math.round(points*0.6);
     return {
@@ -145,12 +134,12 @@ export default async function handler(req,res){
         if(!q) continue;
         let parsed = null;
         try{
-          const prompt = `You are Gemma 4, evaluator for Next-Gen AI Education Track. Diagnose WHY.\nQUESTION: ${q.question_text}\nType: ${q.question_type} | Concept: ${q.concept_tag} | Difficulty: ${q.difficulty} | Points: ${q.points}\nGrounding: "${(q.grounding_chunk||'').slice(0,500)}"\nExpected: "${(q.correct_answer||'').slice(0,500)}"\n${q.options?`Options: ${q.options}`:''}\nSTUDENT: "${(ans.student_answer||'').slice(0,900)}"\nReturn ONLY JSON: {"is_correct": bool, "score": int 0..${q.points}, "feedback": "1-2 sentences why marked this way, cite chunk", "conceptual_gap": "diagnose mental model error + tailored next step"} Constructive, precise.`;
-          const raw = await callModel(prompt);
+          const prompt = `You are Gemma 4, evaluator for Next-Gen AI Education Track. Diagnose WHY.\nQUESTION: ${q.question_text}\nType: ${q.question_type} | Concept: ${q.concept_tag} | Difficulty: ${q.difficulty} | Points: ${q.points}\nGrounding: "${(q.grounding_chunk||'').slice(0,500)}"\nExpected: "${(q.correct_answer||'').slice(0,500)}"\n${q.options?`Options: ${q.options}`:''}\nSTUDENT: "${(ans.student_answer||'').slice(0,900)}"\nSTEM RULES: preserve formulas exactly (H2SO4, x^2, ∫..dx, vectors). Accept formatting variants (H_2SO_4=H2SO4, ->=→). For calculations require working, not just the final value; award partial credit for correct setup with arithmetic slip. STRUCTURES: answers may contain SMILES; treat identical SMILES (ignoring whitespace) as correct, and equivalent SMILES with same connectivity (aromatic c1ccccc1 vs Kekule C1=CC=CC=C1) as correct with full credit — never penalize valid resonance spellings.\nReturn ONLY JSON: {"is_correct": bool, "score": int 0..${q.points}, "feedback": "1-2 sentences why marked this way, cite chunk", "conceptual_gap": "diagnose mental model error + tailored next step"} Constructive, precise.`;
+          const raw = await callModel(prompt, { temperature: 0.38, maxTokens: 1200, thinkingBudget: 256 });
           if(raw){
             const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
             const blob = (s!==-1 && e!==-1 ? raw.slice(s,e+1) : raw).replace(/```json|```/g,'').trim();
-            const tmp = JSON.parse(blob);
+            const tmp = JSON.parse(repairJson(blob));
             if(typeof tmp.is_correct==='boolean' && typeof tmp.score==='number'){
               parsed = { is_correct: !!tmp.is_correct, score: Math.max(0, Math.min(q.points, Math.round(Number(tmp.score)))), feedback: String(tmp.feedback||''), conceptual_gap: String(tmp.conceptual_gap||'') };
             }

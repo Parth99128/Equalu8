@@ -6,3 +6,7 @@ python-docx>=0.8.11
 PyMuPDF>=1.24.0
 pytesseract>=0.3.10
 Pillow>=10.0.0
+# Heavy math OCR — installed (CPU, no GPU needed). Auto-used by ingest_cli.
+pix2tex>=0.1.0
+# torch CPU is required by pix2tex (already present as 2.13.0+cpu on this machine):
+# torch --index-url https://download.pytorch.org/whl/cpu

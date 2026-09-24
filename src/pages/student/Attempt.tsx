@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, MessageSquare, Clock } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import StructureView from '../../components/StructureView'
 export default function Attempt({ onToast }: { onToast:(m:string)=>void }){
   const { setId } = useParams()
   const navigate = useNavigate()
@@ -127,13 +128,13 @@ export default function Attempt({ onToast }: { onToast:(m:string)=>void }){
                 <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-zinc-100 border">{q.question_type}</span>
                 <span className="ml-auto text-xs font-bold text-zinc-500">{q.points} pts</span>
               </div>
-              <p className="text-[13.5px] font-semibold leading-relaxed mt-3">{q.question_text}</p>
+              <p className="text-[13.5px] font-semibold leading-relaxed mt-3"><StructureView text={q.question_text} /></p>
               {q.question_type==='mcq' ? (
                 <div className="mt-3 grid gap-2">
                   {parseOptions(q.options).map((opt:string)=>(
                     <label key={opt} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer ${answers[q.id]===opt?'bg-emerald-600 text-white border-emerald-600':'bg-zinc-50 hover:bg-white'}`}>
                       <input type="radio" name={`q-${q.id}`} checked={answers[q.id]===opt} onChange={()=>setAnswers(p=>({...p,[q.id]:opt}))} className="accent-emerald-600"/>
-                      <span className="text-sm font-medium">{opt}</span>
+                      <span className="text-sm font-medium"><StructureView text={opt} small /></span>
                     </label>
                   ))}
                 </div>

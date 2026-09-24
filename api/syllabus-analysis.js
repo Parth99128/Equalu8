@@ -1,59 +1,9 @@
 import supabase from './db-client.js';
+import { callModel } from './free-llm.js';
 
-function envKey(){
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GEMMA_API_KEY || process.env.VITE_GEMINI_API_KEY || null;
-  return key;
-}
-
-async function viaGemini(prompt){
-  const key = envKey();
-  if(!key) return null;
-  const models = ['gemma-4-26b-a4b-it','gemma-4-31b-it','gemini-2.5-flash','gemini-2.5-pro','gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-flash','gemini-1.5-pro','gemini-1.0-pro'];
-  for(const model of models){
-    try{
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.3, maxOutputTokens:8192} }) });
-      if(res.status===404) continue;
-      if(!res.ok) continue;
-      const j = await res.json();
-      let t = null;
-      const parts = j?.candidates?.[0]?.content?.parts;
-      if(parts && parts.length > 0) {
-        for(const part of parts) {
-          if(part.text && !part.thought) { t = part.text; break; }
-        }
-        if(!t && parts[parts.length - 1].text) t = parts[parts.length - 1].text;
-      }
-      if(t) return t;
-    }catch(e){ continue; }
-  }
-  return null;
-}
-
-async function viaPollinations(prompt){
-  const short = prompt.slice(0,1300).replace(/\n/g,' ').trim();
-  let tries=0;
-  while(tries<4){
-    tries++;
-    const nonce = Math.floor(Math.random()*9999999);
-    const enc = encodeURIComponent(short + ` id:${nonce}`);
-    const url = `https://text.pollinations.ai/${enc}?seed=${Math.floor(Math.random()*999999)}`;
-    try{
-      const res = await fetch(url, { headers:{ 'User-Agent':'EVALU8/2.0', 'Accept':'text/plain' } });
-      const text = await res.text();
-      if(res.ok && text && !/queue full|payment required|price:\s*poll/i.test(text) && text.trim().length>20) return text;
-      await new Promise(r=>setTimeout(r, 1200*tries));
-    }catch(e){ await new Promise(r=>setTimeout(r, 900)); }
-  }
-  return null;
-}
-
-async function callModel(prompt){
-  const t1 = await viaGemini(prompt);
-  if(t1) return t1;
-  const t2 = await viaPollinations(prompt);
-  if(t2) return t2;
-  return null;
+// Lone backslashes from chemistry text break JSON.parse.
+function repairJson(blob) {
+  return blob.replace(/\\(?![\"\\/bfnrtu])/g, '\\\\');
 }
 
 function localAnalyze(doc){
@@ -258,18 +208,18 @@ Return structured JSON only with this exact schema:
 }
 
 DOCUMENT TITLE: ${combinedDoc.title}
-CHUNKS:
-${combinedDoc.chunks.map((c,i) => `[Chunk ${i+1} | Doc: ${c.document_title} | p${c.page}]: ${c.text.slice(0,500)}`).join('\n\n')}
+CHUNKS (sampled for prompt budget — full set stored in DB):
+${combinedDoc.chunks.slice(0, 24).map((c,i) => `[Chunk ${i+1} | Doc: ${c.document_title} | p${c.page}]: ${String(c.text).slice(0,350)}`).join('\n\n')}
 
 FULL CONTENT PREVIEW:
-${combinedDoc.content.slice(0,8000)}`;
-    
+${combinedDoc.content.slice(0,3000)}`;
+
     try{
-      const raw = await callModel(prompt);
+      const raw = await callModel(prompt, { temperature: 0.3, maxTokens: 4096, thinkingBudget: 1024, pollinationsChars: 3000, pollinationsRetries: 2 });
       if(raw){
         const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
         const blob = (start!==-1 && end!==-1 ? raw.slice(start,end+1) : raw).replace(/```json|```/g,'').trim();
-        const parsed = JSON.parse(blob);
+        const parsed = JSON.parse(repairJson(blob));
         if(parsed && parsed.modules && Array.isArray(parsed.modules)){
           analysis = parsed;
         }

@@ -1,128 +1,33 @@
 """
-Unified AI client — all responses are API-generated.
-Primary: Gemini/Gemma if GEMINI_API_KEY is in .env (rag_engine/.env or root .env)
-Fallback: Pollinations text.pollinations.ai — free, anonymous, no key (still API-generated)
+Unified AI client — $0 operation via free chain (see free_llm.py).
+
+Order: Ollama local (no key) -> Gemini free-tier (optional key)
+  -> Groq free-tier (optional key) -> Pollinations anonymous (no key).
+Kept as a thin backwards-compatible wrapper; new code should import free_llm.
 """
-import os
-import time
-import random
-import urllib.parse
-import urllib.request
-import urllib.error
 from typing import Optional
 
+from .free_llm import generate as _free_generate
+from .free_llm import get_gemini_key as _free_key
+
+
 def _env_key() -> Optional[str]:
-    k = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMMA_API_KEY") or os.getenv("VITE_GEMINI_API_KEY")
-    if k and len(k.strip()) >= 10:
-        return k.strip()
-    return None
+    return _free_key()
+
 
 def _gemini(prompt: str, key: str, max_tokens: int = 8192) -> Optional[str]:
-    try:
-        import requests
-    except Exception:
-        return None
-    try:
-        from .config import GEMINI_MODEL
-        models = [GEMINI_MODEL, "gemma-4-26b-a4b-it", "gemma-4-31b-it", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
-    except Exception:
-        models = ["gemma-4-26b-a4b-it", "gemma-4-31b-it", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
-    for m in models:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}"
-            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.64, "maxOutputTokens": max_tokens}}, timeout=60)
-            if r.status_code == 404:
-                continue
-            r.raise_for_status()
-            j = r.json()
-            # Handle Gemma 4 response format which includes thinking tokens
-            parts = j.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-            t = None
-            if parts:
-                # Find the part without thinking (the actual response)
-                for part in parts:
-                    if part.get("text") and not part.get("thought"):
-                        t = part["text"]
-                        break
-                # If all parts have thought=true, use the last one
-                if not t and parts[-1].get("text"):
-                    t = parts[-1]["text"]
-            if t:
-                return t
-        except Exception as e:
-            if "API key" in str(e) or "PERMISSION_DENIED" in str(e):
-                raise
-            continue
-    return None
+    from .free_llm import _gemini as _g
+    return _g(prompt, key, max_tokens=max_tokens)
+
 
 def _pollinations(prompt: str, retries: int = 6) -> Optional[str]:
-    """Free anonymous GET — still API-generated (parameter-free open model)"""
-    # Compact prompt for free tier reliability
-    base = " ".join(prompt.split())
-    if len(base) > 1600:
-        base = base[:1600]
-    for attempt in range(retries):
-        nonce = str(random.randint(10000000, 99999999))
-        full = base + f" id:{nonce}"
-        enc = urllib.parse.quote(full, safe="")
-        url = f"https://text.pollinations.ai/{enc}?seed={random.randint(1, 9999999)}"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "EVALU8/2.0", "Accept": "text/plain"})
-            for h in list(req.headers.keys()):
-                if h.lower() == "authorization":
-                    del req.headers[h]
-            with urllib.request.urlopen(req, timeout=42) as resp:
-                text = resp.read().decode("utf-8", errors="ignore")
-                if not text or len(text.strip()) < 8:
-                    raise RuntimeError("empty")
-                low = text.lower()
-                if "queue full" in low or ("payment required" in low and "anonymous" not in low):
-                    raise RuntimeError(text[:320])
-                return text
-        except urllib.error.HTTPError as e:
-            body = ""
-            try:
-                body = e.read().decode()[:900]
-            except Exception:
-                pass
-            low = (body or "").lower()
-            if e.code in (429, 503, 502) or "queue full" in low:
-                time.sleep(1.6 + attempt * 1.4 + random.random())
-                continue
-            if e.code in (402, 403):
-                if len(base) > 900:
-                    base = base[:950]
-                time.sleep(1.1 + random.random())
-                continue
-            time.sleep(1.0 + random.random())
-            continue
-        except Exception:
-            time.sleep(1.0 + random.random())
-            continue
-    return None
+    from .free_llm import _pollinations as _p
+    return _p(prompt, retries=retries)
+
 
 def generate(prompt: str, max_tokens: int = 2600) -> str:
-    """Try Gemini first (if .env key present), then free Pollinations. Never returns heuristic."""
-    key = None
-    try:
-        from .config import get_gemini_key
-        try:
-            key = get_gemini_key()
-        except RuntimeError:
-            key = _env_key()
-    except Exception:
-        key = _env_key()
-    if key:
-        try:
-            t = _gemini(prompt, key, max_tokens=max_tokens)
-            if t:
-                return t
-        except Exception:
-            pass
-    t = _pollinations(prompt)
-    if t:
-        return t
-    raise RuntimeError("Model throttled — free tier allows 1 request at a time per IP. Wait 5s and retry.")
+    """Free chain — never requires a paid key. Raises only if all free providers fail."""
+    return _free_generate(prompt, max_tokens=max_tokens)
 
 
 # ============================================================================

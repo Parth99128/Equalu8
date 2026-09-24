@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Brain, AlertTriangle, Lightbulb } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import StructureView from '../../components/StructureView'
 export default function Feedback({ onToast }: { onToast:(m:string)=>void }){
   const { user, profile } = useAuth()
   const [subs, setSubs] = useState<any[]>([])
@@ -101,9 +102,9 @@ export default function Feedback({ onToast }: { onToast:(m:string)=>void }){
                 <div key={a.id} className="bg-white rounded-[24px] border overflow-hidden">
                   <div className="px-4 py-3 bg-zinc-50 border-b flex items-center justify-between"><span className="text-xs font-black flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-zinc-900 text-white grid place-items-center text-[11px]">{idx+1}</span>{a.q?.concept_tag}</span><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${a.is_correct?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700'}`}>{a.is_correct?'CORRECT':'REVIEW'}</span></div>
                   <div className="p-4 space-y-3">
-                    <p className="text-sm font-semibold leading-relaxed">{a.q?.question_text}</p>
+                    <p className="text-sm font-semibold leading-relaxed"><StructureView text={a.q?.question_text} /></p>
                     <div className="rounded-xl bg-zinc-50 border p-3"><div className="text-[10px] font-black tracking-widest text-zinc-500">YOUR ANSWER</div><div className="text-xs mt-1 whitespace-pre-wrap">{a.student_answer||'—'}</div></div>
-                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3"><div className="text-[10px] font-black tracking-widest text-emerald-700">EXPECTED (grounded)</div><div className="text-xs mt-1 text-emerald-900">{a.q?.correct_answer}</div></div>
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3"><div className="text-[10px] font-black tracking-widest text-emerald-700">EXPECTED (grounded)</div><div className="text-xs mt-1 text-emerald-900"><StructureView text={a.q?.correct_answer} /></div></div>
                     {a.feedback ? <><div className="rounded-xl bg-violet-50 border border-violet-200 p-3"><div className="text-[10px] font-black tracking-widest text-violet-700">WHY — GEMMA FEEDBACK</div><p className="text-xs mt-1 text-violet-900 leading-relaxed">{a.feedback}</p></div><div className="rounded-xl bg-amber-50 border border-amber-200 p-3"><div className="text-[10px] font-black tracking-widest text-amber-700">YOUR GAP & NEXT STEP</div><p className="text-xs mt-1 text-amber-900 leading-relaxed">{a.conceptual_gap}</p></div><div className="rounded-xl bg-zinc-900 text-white p-3 text-xs"><b>Cited chunk:</b> “{(a.q?.grounding_chunk||'').slice(0,150)}…”</div></> : <div className="text-xs text-zinc-500 italic">Awaiting feedback.</div>}
                   </div>
                 </div>

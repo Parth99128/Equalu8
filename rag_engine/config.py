@@ -1,7 +1,9 @@
 """
-Central configuration — GEMINI_API_KEY from .env (hidden, never shown live)
-is the preferred source. If absent, the free Pollinations API (still a
-parameter-free model via API) is used so teacher flows never break.
+Central configuration — $0 operation via free chain (see free_llm.py).
+
+Order: Groq -> Cerebras -> OpenRouter (:free Gemma 4) -> Gemini free-tier
+-> Ollama local (Gemma 4 offline) -> Pollinations anonymous (no key).
+Nothing requires a paid key.
 All responses remain API-generated — never hardcoded dummy data.
 """
 import os
@@ -23,7 +25,7 @@ def get_gemini_key():
 def has_key() -> bool:
     return get_gemini_key() is not None
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemma-4-26b-a4b-it")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "text-embedding-004")
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1100"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "140"))

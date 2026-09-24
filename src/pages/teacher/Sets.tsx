@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import StructureView from '../../components/StructureView'
 import { 
   Sparkles, 
   BookOpen, 
@@ -603,18 +604,18 @@ export default function Sets({ onToast }: { onToast:(m:string)=>void }){
                 <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-100 text-violet-700 border">{q.concept_tag}</span>
                 <span className="ml-auto text-xs font-mono font-bold text-zinc-500">{q.points} pts</span>
               </div>
-              <p className="text-[13px] font-semibold mt-2 leading-relaxed">{idx+1}. {q.question_text}</p>
+              <p className="text-[13px] font-semibold mt-2 leading-relaxed">{idx+1}. <StructureView text={q.question_text} /></p>
               {q.question_type==='mcq' && (
                 <div className="grid sm:grid-cols-2 gap-1.5 mt-3">
                   {parseOptions(q.options).map((o:string,i:number)=>(
-                    <div key={i} className={`text-xs px-3 py-2 rounded-xl border flex items-center gap-2 ${o===q.correct_answer?'bg-emerald-50 border-emerald-200 font-semibold':'bg-zinc-50'}`}><span className="w-5 h-5 rounded-full bg-white border grid place-items-center text-[10px] font-bold">{String.fromCharCode(65+i)}</span>{o}</div>
+                    <div key={i} className={`text-xs px-3 py-2 rounded-xl border flex items-center gap-2 ${o===q.correct_answer?'bg-emerald-50 border-emerald-200 font-semibold':'bg-zinc-50'}`}><span className="w-5 h-5 rounded-full bg-white border grid place-items-center text-[10px] font-bold">{String.fromCharCode(65+i)}</span><StructureView text={o} small /></div>
                   ))}
                 </div>
               )}
               <div className="mt-3 rounded-xl bg-zinc-50 border p-3">
                 <div className="text-[10px] font-black tracking-widest text-zinc-500 flex items-center gap-1"><BookOpen size={10}/> GROUNDING</div>
                 <div className="text-xs mt-1 line-clamp-2">“{q.grounding_chunk}”</div>
-                <div className="text-[11px] text-zinc-600 mt-1"><b>Key:</b> {q.correct_answer.slice(0,120)}</div>
+                <div className="text-[11px] text-zinc-600 mt-1"><b>Key:</b> <StructureView text={q.correct_answer.slice(0,120)} /></div>
               </div>
             </div>
           ))}

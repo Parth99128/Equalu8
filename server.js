@@ -158,6 +158,18 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ── LLM lane status (key COUNTS only — never values) ──
+// Lets teachers/ops verify which free providers are wired on THIS machine:
+//   curl http://localhost:3004/api/llm-status
+app.get('/api/llm-status', async (req, res) => {
+  try {
+    const { freeLlmStatus } = await import('./api/free-llm.js');
+    res.json({ status: 'ok', lanes: freeLlmStatus() });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: String(err.message || err).slice(0, 200) });
+  }
+});
+
 // ── Serve static frontend (built Vite output) ──
 const distPath = path.join(__dirname, 'dist');
 

@@ -90,13 +90,29 @@ CRITICAL: Every question MUST be answerable ONLY from the provided chunks above.
 - IMPORTANT: Use DIFFERENT concept_tags derived from the document content.
 - IMPORTANT: Vary the question framing - don't repeat the same question stems.
 
+STEM FIDELITY (math / chemistry / vectors / calculus):
+- Preserve formulas EXACTLY: H2SO4 stays H2SO4, x^2 stays x^2, integrals/vectors intact.
+- NCERT text extraction renders superscripts inline (x2 = x^2, dx2 = dx^2,
+  y' = dy/dx prime notation) and display fractions as adjacent fragments
+  ("dy dx = ..." means dy/dx). Interpret powers/derivatives contextually —
+  "x2" next to dx/dy language is x squared, not x times 2.
+- CYCLIC STRUCTURES: chunks may carry RDKit-validated [STRUCTURE] blocks
+  (SMILES + Name + Formula). For cyclic-compound questions include BOTH the
+  SMILES and the name in correct_answer, copy SMILES verbatim, and use a
+  plausible wrong isomer/ring-size as an MCQ distractor.
+- MANDATORY: if any provided chunk contains a [STRUCTURE] block, at least ONE
+  generated question MUST test those cyclic structures and MUST include the
+  SMILES string in its correct_answer.
+- Calculation answers MUST show working (substitution -> simplification -> result).
+- MCQ distractors must encode classic STEM errors (sign flip, chain-rule miss, charge error, vector/scalar confusion, dropped +C).
+
 For each, output JSON keys:
 question_text, question_type (mcq|short|conceptual), options (array|null), correct_answer, concept_tag, difficulty (Easy|Medium|Hard), explanation, grounding_chunk (verbatim from a chunk), points (5/10/15)
 
 Return ONLY JSON array:
 [{{"question_text":"...","question_type":"mcq","options":["A","B","C","D"],"correct_answer":"B","concept_tag":"...","difficulty":"Medium","explanation":"...","grounding_chunk":"...","points":5}}]
 """
-    raw = ai_generate(prompt, max_tokens=max(4000, total_questions * 600))
+    raw = ai_generate(prompt, max_tokens=min(6000, 1200 + total_questions * 400))
     # extract JSON array
     start = raw.find("[")
     end = raw.rfind("]")

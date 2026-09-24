@@ -166,7 +166,17 @@ function isGarbledText(s) {
   // 2+ inner-caps mangled tokens (oQHOfThe) or backslash-glyph words.
   const toks = t.split(/\s+/);
   let mangled = 0, shout = 0;
-  const EXEMPT = new Set(['SMILES', 'IUPAC', 'NCERT', 'RDKIT']);
+  // Legit ALL-CAPS vocabulary (never OCR-garbage signals): standards bodies
+  // and doc-structure words (NCERT/NPTEL/TABLE/FIGURE/EXAMPLE...), plus
+  // networking/CS terms whose syllabus spelling is uppercase (ADDRESS,
+  // SUBNET, MANET...). Genuine garbage (FBCMLJAGHDKIN) still trips the rule.
+  const EXEMPT = new Set(['SMILES', 'IUPAC', 'NCERT', 'RDKIT', 'NPTEL',
+    'TABLE', 'FIGURE', 'EXAMPLE', 'EXERCISE', 'CHAPTER', 'SECTION', 'CONTINUED',
+    'SOLUTION', 'SUMMARY', 'REVIEW', 'NOTES', 'UNIT', 'PART', 'LESSON',
+    'INTERNET', 'MANET', 'ADDRESS', 'SUBNET', 'MASK', 'ROUTER', 'PACKET',
+    'HEADER', 'PAYLOAD', 'SOCKET', 'SERVER', 'CLIENT', 'HTTPS', 'FRAME',
+    'SEGMENT', 'PROTOCOL', 'NETWORK', 'BINARY', 'HOSTS', 'PORTS', 'CHECKSUM',
+    'GATEWAY', 'UNICAST', 'MULTICAST', 'BROADCAST', 'DOMAIN', 'STYLE']);
   for (const w of toks) {
     const clean = w.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '');
     if (clean.length >= 5 && /[a-z][A-Z]/.test(clean)) mangled++;

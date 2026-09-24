@@ -259,7 +259,11 @@ function runPythonScript(scriptPath, args) {
     
     const child = spawn(python, [scriptPath, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: env
+      env: env,
+      // New process group (Linux) so the timeout below can kill the WHOLE
+      // tree: SIGKILL on the direct child orphans grandchildren (tesseract,
+      // pix2tex workers), which then pile up until the box OOMs.
+      detached: process.platform !== 'win32',
     });
     
     let stdout = '';
@@ -267,8 +271,13 @@ function runPythonScript(scriptPath, args) {
     let timedOut = false;
     const killTimer = setTimeout(() => {
       timedOut = true;
-      console.error(`Python ingest timed out after ${timeoutMs}ms — killing child`);
-      try { child.kill('SIGKILL'); } catch {}
+      console.error(`Python ingest timed out after ${timeoutMs}ms — killing process group`);
+      try {
+        // Negative PID = whole process group (python + tesseract + workers)
+        process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        try { child.kill('SIGKILL'); } catch {}
+      }
       resolve({ error: `Document processing timed out after ${Math.round(timeoutMs / 1000)}s. Try a smaller file or set FAST_INGEST=1 on the server.`, timedOut: true });
     }, timeoutMs);
     // Don't let the timer keep the Node process alive on its own

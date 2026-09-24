@@ -76,14 +76,32 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
+            set -e
             cd /home/azureuser/evalu8
             git pull origin main
-            npm install
+            npm ci
+            # Load VITE_ vars from VM .env so `npm run build` embeds real values.
+            # (dist/ is gitignored — it must be rebuilt here on every deploy.)
+            if [ -f .env ]; then set -a; source .env; set +a; fi
             npm run build
-            source .venv/bin/activate
+            # Fail fast instead of restarting PM2 with a broken frontend.
+            # Old server.js only checked dist/ folder; a partial build leaves
+            # dist/ present but index.html missing -> ENOENT at runtime.
+            if [ ! -f dist/index.html ]; then
+              echo "❌ Build failed: dist/index.html missing after npm run build"
+              ls -la dist || true
+              exit 1
+            fi
+            echo "✅ Frontend built: $(du -sh dist | cut -f1) dist/"
+            if [ -d .venv ]; then source .venv/bin/activate; fi
             pip install -r requirements.txt
-            deactivate
-            pm2 restart evalu8-server
+            deactivate || true
+            if pm2 describe evalu8-server > /dev/null 2>&1; then
+              pm2 restart evalu8-server --update-env
+            else
+              pm2 start server.js --name evalu8-server
+              pm2 save
+            fi
             echo "✅ Deployed at $(date)"
 
       - name: Verify deployment

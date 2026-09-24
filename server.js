@@ -147,6 +147,13 @@ for (const [route, handler] of Object.entries(apiRoutes)) {
   app.all(route, wrapHandler(handler));
 }
 
+// ── Built-frontend detection (dist/index.html, not just dist/) ──
+// dist/ is gitignored, so the VM must produce it via `npm run build`.
+// Checking the file (not the folder) avoids ENOENT crashes on partial builds.
+const distPath = path.join(__dirname, 'dist');
+const indexHtml = path.join(distPath, 'index.html');
+const hasBuiltFrontend = fs.existsSync(indexHtml);
+
 // ── Health check endpoint ──
 app.get('/api/health', (req, res) => {
   res.json({
@@ -155,6 +162,7 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime(),
     node: process.version,
     python: 'available via subprocess',
+    frontend: hasBuiltFrontend ? 'built' : 'missing (run npm run build)',
   });
 });
 
@@ -171,9 +179,7 @@ app.get('/api/llm-status', async (req, res) => {
 });
 
 // ── Serve static frontend (built Vite output) ──
-const distPath = path.join(__dirname, 'dist');
-
-if (fs.existsSync(distPath)) {
+if (hasBuiltFrontend) {
   app.use(express.static(distPath));
 
   // SPA fallback — all non-API, non-static routes serve index.html
@@ -184,10 +190,21 @@ if (fs.existsSync(distPath)) {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });
     }
-    res.sendFile(path.join(distPath, 'index.html'));
+    res.sendFile(indexHtml, (err) => {
+      if (err) {
+        console.error('Failed to serve index.html:', err.message);
+        if (!res.headersSent) {
+          res.status(503).send('Frontend not built. Run: npm run build');
+        }
+      }
+    });
   });
 } else {
-  console.warn('⚠️  dist/ directory not found. Run "npm run build" first.');
+  if (fs.existsSync(distPath)) {
+    console.warn(`⚠️  dist/ exists but index.html is missing (${indexHtml}). Build failed or incomplete. Run "npm run build" on the server.`);
+  } else {
+    console.warn('⚠️  dist/ directory not found. Run "npm run build" first.');
+  }
   app.get('{*path}', (req, res) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });

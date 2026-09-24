@@ -129,9 +129,23 @@ async function viaGemini(prompt, { temperature = 0.6, maxTokens = 8192, thinking
   ];
   for (const key of keys.slice(0, 3)) {
     const seen = new Set();
+    // Give up on remaining models after 3 consecutive slow/overloaded
+    // failures (45s aborts, 429, 5xx) — one sick model list must not burn
+    // minutes per batch when the whole endpoint is down. Instant 404/400s
+    // (retired model, bad param) don't count: the provider is reachable.
+    let sick = 0;
+    const noteSick = () => {
+      sick += 1;
+      if (sick >= 3) {
+        console.log('[free-llm] Gemini -> stopping model rotation (3 consecutive slow/overloaded fails)');
+        return true;
+      }
+      return false;
+    };
     for (const m of models) {
       if (!m || seen.has(m)) continue;
       seen.add(m);
+    const mStart = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 45000);
     try {
@@ -153,7 +167,7 @@ async function viaGemini(prompt, { temperature = 0.6, maxTokens = 8192, thinking
           signal: controller.signal,
         }
       );
-      if (r.status === 404 || r.status === 410) continue; // unknown/retired model — next
+      if (r.status === 404 || r.status === 410) { sick = 0; continue; } // unknown/retired model — next
       if (!r.ok) {
         const t = await r.text();
         // Bad key/quota: don't abort the whole chain — let other keys and
@@ -161,6 +175,9 @@ async function viaGemini(prompt, { temperature = 0.6, maxTokens = 8192, thinking
         const tag = r.status === 429 ? 'QUOTA-EXCEEDED' : `${r.status}`;
         console.warn(`[free-llm] Gemini ${m} -> ${tag}: ${t.slice(0, 200)}`);
         if (r.status === 403) break; // key revoked — try next key
+        if (Date.now() - mStart > 5000 || r.status === 429 || r.status >= 500) {
+          if (noteSick()) return null;
+        } else { sick = 0; }
         continue; // 400/429/5xx — try next model, then next key/provider
       }
       const j = await r.json();
@@ -176,7 +193,11 @@ async function viaGemini(prompt, { temperature = 0.6, maxTokens = 8192, thinking
         continue; // thought-only response — try next model
       }
     } catch (e) {
-      if (String(e?.message || '').toLowerCase().includes('abort')) continue;
+      // 45s abort = sick endpoint — count it; instant errors just continue.
+      if (String(e?.message || '').toLowerCase().includes('abort')) {
+        if (noteSick()) return null;
+        continue;
+      }
       continue;
     } finally {
       clearTimeout(timer);
@@ -468,14 +489,51 @@ async function viaPollinations(prompt, { maxChars = 1600, retries = 4 } = {}) {
   return null;
 }
 
+// Circuit-breaker state for timed() — see below. Threshold/cooldown tunable
+// via env without a redeploy: LLM_LANE_FAILS=2, LLM_LANE_COOLDOWN_MS=600000.
+const laneState = {};
+function laneFailThreshold() {
+  const n = parseInt(process.env.LLM_LANE_FAILS || '2', 10);
+  return Number.isFinite(n) && n > 0 ? n : 2;
+}
+function laneCooldownMs() {
+  const n = parseInt(process.env.LLM_LANE_COOLDOWN_MS || '600000', 10);
+  return Number.isFinite(n) && n >= 0 ? n : 600000;
+}
+function recordLaneFail(name, st) {
+  st.fails += 1;
+  if (st.fails >= laneFailThreshold()) {
+    st.skipUntil = Date.now() + laneCooldownMs();
+    console.log(`[free-llm] ${name} -> circuit OPEN (${st.fails} slow fails, cooling down ${Math.round(laneCooldownMs() / 1000)}s)`);
+  }
+}
+
 async function timed(name, fn) {
+  // Circuit breaker: a lane that keeps FAILING SLOWLY (e.g. Gemini 503s /
+  // 45s aborts) is skipped for a cooldown so one dead provider can't add
+  // minutes to every batch. Instant nulls (<2s = no keys configured) never
+  // trip it; any success resets it.
+  const now = Date.now();
+  const st = laneState[name] || (laneState[name] = { fails: 0, skipUntil: 0 });
+  if (now < st.skipUntil) {
+    console.log(`[free-llm] ${name} -> SKIPPED (cooling down after failures)`);
+    return null;
+  }
   const t0 = Date.now();
   try {
     const r = await fn();
-    console.log(`[free-llm] ${name} -> ${r ? `OK len=${r.length}` : 'null'} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const dt = Date.now() - t0;
+    if (r) {
+      st.fails = 0; st.skipUntil = 0;
+    } else if (dt >= 2000) {
+      recordLaneFail(name, st);
+    }
+    console.log(`[free-llm] ${name} -> ${r ? `OK len=${r.length}` : 'null'} in ${(dt / 1000).toFixed(1)}s`);
     return r;
   } catch (e) {
-    console.log(`[free-llm] ${name} -> THREW ${String(e?.message || e).slice(0, 150)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const dt = Date.now() - t0;
+    if (dt >= 2000) recordLaneFail(name, st);
+    console.log(`[free-llm] ${name} -> THREW ${String(e?.message || e).slice(0, 150)} in ${(dt / 1000).toFixed(1)}s`);
     return null;
   }
 }

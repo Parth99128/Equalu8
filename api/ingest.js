@@ -143,7 +143,7 @@ export default async function handler(req, res) {
       
       if (result.error) {
         console.error('Python script error:', result.error);
-        return res.status(500).json({ error: result.error });
+        return res.status(result.timedOut ? 504 : 500).json({ error: result.error });
       }
       
       // Store in Supabase if configured
@@ -218,6 +218,9 @@ function splitBuffer(buffer, delimiter) {
 
 function runPythonScript(scriptPath, args) {
   return new Promise((resolve, reject) => {
+    // Hard cap so one stuck upload can't hang the request (and pile up
+    // until the box OOMs). Override with INGEST_TIMEOUT_MS on the server.
+    const timeoutMs = parseInt(process.env.INGEST_TIMEOUT_MS || '300000', 10);
     // Resolve Python executable — prefer project venv, then system Python
     let python = process.platform === 'win32' ? 'python' : 'python3';
     
@@ -261,6 +264,15 @@ function runPythonScript(scriptPath, args) {
     
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    const killTimer = setTimeout(() => {
+      timedOut = true;
+      console.error(`Python ingest timed out after ${timeoutMs}ms — killing child`);
+      try { child.kill('SIGKILL'); } catch {}
+      resolve({ error: `Document processing timed out after ${Math.round(timeoutMs / 1000)}s. Try a smaller file or set FAST_INGEST=1 on the server.`, timedOut: true });
+    }, timeoutMs);
+    // Don't let the timer keep the Node process alive on its own
+    if (killTimer.unref) killTimer.unref();
     
     child.stdout.on('data', (data) => { 
       console.log('Python stdout:', data.toString().slice(0, 200));
@@ -272,6 +284,8 @@ function runPythonScript(scriptPath, args) {
     });
     
     child.on('close', (code) => {
+      if (timedOut) return; // already resolved by the kill timer
+      clearTimeout(killTimer);
       console.log('Python process exited with code:', code);
       console.log('Python stdout:', stdout);
       console.log('Python stderr:', stderr);
@@ -324,6 +338,8 @@ function runPythonScript(scriptPath, args) {
     });
     
     child.on('error', (err) => {
+      if (timedOut) return;
+      clearTimeout(killTimer);
       console.error('Python spawn error:', err);
       resolve({ error: 'Failed to spawn Python: ' + err.message });
     });

@@ -6,6 +6,17 @@
 #   VM_USER       — SSH username (usually "azureuser")
 #   VM_SSH_KEY    — Private SSH key for the VM (contents of ~/.ssh/id_rsa)
 #   VM_DOMAIN     — (optional) Your custom domain, e.g. equalu8.me
+#
+# Optional free-LLM keys (Settings → Secrets → Actions). Any that are set are
+# synced into the VM's .env on every deploy (never blanked when unset), so
+# .env on your laptop is NOT the source of truth — GitHub Secrets are.
+# All free, no credit card. Gemma 4 lanes need CEREBRAS and/or OPENROUTER:
+#   GROQ_API_KEY         — console.groq.com (fast; llama-4-scout + gpt-oss)
+#   NVIDIA_API_KEY       — build.nvidia.com (NIM_API_KEY also accepted)
+#   CEREBRAS_API_KEY     — cerebras.ai (Gemma 4 31B, fastest inference)
+#   OPENROUTER_API_KEY   — openrouter.ai/keys (Gemma 4 :free models)
+#   GEMINI_API_KEY       — aistudio.google.com (Gemini + Gemma free tier)
+#   POLLINATIONS_API_KEY — enter.pollinations.ai (reliable free lane)
 
 name: Build & Deploy
 
@@ -71,14 +82,48 @@ jobs:
 
       - name: Deploy to Azure VM
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          SYNC_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SYNC_NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          SYNC_CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SYNC_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SYNC_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SYNC_POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          envs: SYNC_GROQ_API_KEY,SYNC_NVIDIA_API_KEY,SYNC_CEREBRAS_API_KEY,SYNC_OPENROUTER_API_KEY,SYNC_GEMINI_API_KEY,SYNC_POLLINATIONS_API_KEY
           script: |
             set -e
             cd /home/azureuser/evalu8
             git pull origin main
+            # ── Sync free-LLM keys: GitHub Secrets → VM .env ──
+            # Secrets that are SET overwrite .env; UNSET secrets leave .env
+            # untouched (never blanked). Values appended via printf so any
+            # characters are stored literally.
+            sync_secret() {
+              name="$1"; val="$2"
+              if [ -z "$val" ]; then return 0; fi
+              grep -v "^${name}=" .env > .env.tmp || true
+              mv .env.tmp .env
+              printf '%s=%s\n' "$name" "$val" >> .env
+              echo "synced $name"
+            }
+            touch .env
+            # Drop any malformed line from older rescue scripts ('-e ...').
+            grep -v '^-e ' .env > .env.tmp || true
+            mv .env.tmp .env
+            sync_secret GROQ_API_KEY "$SYNC_GROQ_API_KEY"
+            sync_secret NVIDIA_API_KEY "$SYNC_NVIDIA_API_KEY"
+            sync_secret CEREBRAS_API_KEY "$SYNC_CEREBRAS_API_KEY"
+            sync_secret OPENROUTER_API_KEY "$SYNC_OPENROUTER_API_KEY"
+            sync_secret GEMINI_API_KEY "$SYNC_GEMINI_API_KEY"
+            sync_secret POLLINATIONS_API_KEY "$SYNC_POLLINATIONS_API_KEY"
+            # ── Cheap-VM ingest guardrails (defaults only, never override) ──
+            grep -q '^FAST_INGEST=' .env || printf 'FAST_INGEST=1\n' >> .env
+            grep -q '^INGEST_HEAVY_OCR=' .env || printf 'INGEST_HEAVY_OCR=0\n' >> .env
+            grep -q '^INGEST_TIMEOUT_MS=' .env || printf 'INGEST_TIMEOUT_MS=300000\n' >> .env
             npm ci
             # Load VITE_ vars from VM .env so `npm run build` embeds real values.
             # (dist/ is gitignored — it must be rebuilt here on every deploy.)

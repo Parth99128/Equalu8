@@ -257,6 +257,10 @@ ssh azureuser@YOUR_VM_IP 'bash -s' < deploy.sh
 | `VITE_SUPABASE_URL` | `https://...supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | `eyJ...` |
 | `VITE_GOOGLE_CLIENT_ID` | `123...googleusercontent.com` |
+| `GROQ_API_KEY` *(optional)* | Free fast lane — synced to VM `.env` on deploy |
+| `OPENROUTER_API_KEY` *(optional)* | Gemma 4 `:free` lane — synced to VM `.env` |
+| `CEREBRAS_API_KEY` *(optional)* | Gemma 4 31B lane — synced to VM `.env` |
+| `NVIDIA_API_KEY` / `GEMINI_API_KEY` / `POLLINATIONS_API_KEY` *(optional)* | Overflow lanes — synced to VM `.env` |
 
 **On every `git push main`:**
 1. GitHub Actions builds frontend

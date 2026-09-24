@@ -10,7 +10,34 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleCallback = async () => {
       try {
+        // Surface provider errors (?error=..&error_description=..) instead of generic failure
+        const url = new URL(window.location.href)
+        const urlError = url.searchParams.get('error')
+        const urlErrorDesc = url.searchParams.get('error_description')
+        if (urlError) {
+          console.error('[AuthCallback] OAuth error:', urlError, urlErrorDesc)
+          navigate(`/login?error=${encodeURIComponent(urlErrorDesc || urlError)}`)
+          return
+        }
+
+        // PKCE/code flow: Supabase redirects back with ?code=... — must be
+        // exchanged for a session. getSession() alone returns null here,
+        // which previously looked like "Google login failing".
+        const code = url.searchParams.get('code')
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          // Remove code from URL so a re-render doesn't re-exchange it
+          url.searchParams.delete('code')
+          window.history.replaceState({}, '', url.toString())
+          if (exchangeError) {
+            console.error('[AuthCallback] Code exchange error:', exchangeError.message)
+            navigate(`/login?error=${encodeURIComponent(exchangeError.message)}`)
+            return
+          }
+        }
+
         // Supabase automatically handles the OAuth callback and sets the session
+        // (covers implicit flow #access_token fragment + post-exchange session)
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
